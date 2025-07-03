@@ -5,3 +5,14 @@ edition = "2024"
 
 [dependencies]
 adapters = { path = "../adapters" }
+bitcoin = "0.32.6"
+serde.workspace = true
+thiserror.workspace = true
+log.workspace = true
+expanduser = "1.2.2"
+tokio.workspace = true
+lightning = "0.1.4"
+tonic = "0.13.1"
+tonic_lnd = "0.5.1"
+cln-grpc = "0.4.0"
+axum = "0.8.4"
