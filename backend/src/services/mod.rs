@@ -4,5 +4,8 @@
 //! and orchestrate interactions between different parts of the application,
 //! such as managing node connections or aggregating data.
 
-pub mod node_manager;
+pub mod account_service;
+pub mod credential_service;
 pub mod data_aggregator;
+pub mod node_manager;
+pub mod user_service;

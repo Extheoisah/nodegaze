@@ -10,6 +10,8 @@ use crate::errors::LightningError;
 use expanduser::expanduser;
 use lightning::ln::features::NodeFeatures;
 
+pub mod crypto;
+
 /// Represents a node id, either by its public key or alias.
 #[derive(Serialize, Debug, Clone)]
 pub enum NodeId {

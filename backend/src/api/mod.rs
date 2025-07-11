@@ -4,4 +4,7 @@
 //! such as node observability data and user profiles, excluding core
 //! authentication routes which are handled separately.
 
+pub mod account;
+pub mod common;
+pub mod credential;
 pub mod node;

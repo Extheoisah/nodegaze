@@ -40,3 +40,75 @@ pub enum LightningError {
     #[error("Get graph error: {0}")]
     GetGraphError(String),
 }
+
+/// Generic service error that can be used across all entities
+#[derive(Debug, Error)]
+pub enum ServiceError {
+    #[error("Validation error: {message}")]
+    Validation { message: String },
+
+    #[error("{entity} not found: {identifier}")]
+    NotFound { entity: String, identifier: String },
+
+    #[error("{entity} already exists: {identifier}")]
+    AlreadyExists { entity: String, identifier: String },
+
+    #[error("Permission denied: {message}")]
+    PermissionDenied { message: String },
+
+    #[error("Invalid operation: {message}")]
+    InvalidOperation { message: String },
+
+    #[error("Database error: {source}")]
+    Database {
+        #[from]
+        source: anyhow::Error,
+    },
+
+    #[error("External service error: {message}")]
+    ExternalService { message: String },
+}
+
+pub type ServiceResult<T> = Result<T, ServiceError>;
+
+impl ServiceError {
+    // Helper constructors for common patterns
+
+    pub fn validation(message: impl Into<String>) -> Self {
+        Self::Validation {
+            message: message.into(),
+        }
+    }
+
+    pub fn not_found(entity: impl Into<String>, identifier: impl Into<String>) -> Self {
+        Self::NotFound {
+            entity: entity.into(),
+            identifier: identifier.into(),
+        }
+    }
+
+    pub fn already_exists(entity: impl Into<String>, identifier: impl Into<String>) -> Self {
+        Self::AlreadyExists {
+            entity: entity.into(),
+            identifier: identifier.into(),
+        }
+    }
+
+    pub fn permission_denied(message: impl Into<String>) -> Self {
+        Self::PermissionDenied {
+            message: message.into(),
+        }
+    }
+
+    pub fn invalid_operation(message: impl Into<String>) -> Self {
+        Self::InvalidOperation {
+            message: message.into(),
+        }
+    }
+
+    pub fn external_service(message: impl Into<String>) -> Self {
+        Self::ExternalService {
+            message: message.into(),
+        }
+    }
+}
