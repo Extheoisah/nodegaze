@@ -38,13 +38,13 @@ impl<'a> UserRepository<'a> {
         let user = sqlx::query_as!(
             User,
             r#"
-            INSERT INTO users (account_id, role_id, name, password_hash, email, is_active)
+            INSERT INTO users (account_id, role_id, username, password_hash, email, is_active)
             VALUES (?, ?, ?, ?, ?, ?)
             RETURNING
             id as "id!",
             account_id as "account_id!",
             role_id as "role_id!",
-            name as "name!",
+            username as "username!",
             password_hash as "password_hash!",
             email as "email!",
             is_active as "is_active!",
@@ -55,7 +55,7 @@ impl<'a> UserRepository<'a> {
             "#,
             user.account_id,
             user.role_id,
-            user.name,
+            user.username,
             user.password_hash,
             user.email,
             true
@@ -81,7 +81,7 @@ impl<'a> UserRepository<'a> {
             id as "id!",
             account_id as "account_id!",
             role_id as "role_id!",
-            name as "name!",
+            username as "username!",
             password_hash as "password_hash!",
             email as "email!",
             is_active as "is_active!",
@@ -114,7 +114,7 @@ impl<'a> UserRepository<'a> {
             id as "id!",
             account_id as "account_id!",
             role_id as "role_id!",
-            name as "name!",
+            username as "username!",
             password_hash as "password_hash!",
             email as "email!",
             is_active as "is_active!",
@@ -122,9 +122,42 @@ impl<'a> UserRepository<'a> {
             updated_at as "updated_at!: DateTime<Utc>",
             is_deleted as "is_deleted!",
             deleted_at as "deleted_at?: DateTime<Utc>"
-            FROM users WHERE name = ? AND is_deleted = 0
+            FROM users WHERE username = ? AND is_deleted = 0
             "#,
             username
+        )
+        .fetch_optional(self.pool)
+        .await?;
+
+        Ok(user)
+    }
+
+    /// Retrieves a user by their email.
+    ///
+    /// # Arguments
+    /// * `email` - Email to search for
+    ///
+    /// # Returns
+    /// `Some(User)` if found and active, `None` otherwise
+    pub async fn get_user_by_email(&self, email: &str) -> Result<Option<User>> {
+        let user = sqlx::query_as!(
+            User,
+            r#"
+            SELECT
+            id as "id!",
+            account_id as "account_id!",
+            role_id as "role_id!",
+            username as "username!",
+            password_hash as "password_hash!",
+            email as "email!",
+            is_active as "is_active!",
+            created_at as "created_at!: DateTime<Utc>",
+            updated_at as "updated_at!: DateTime<Utc>",
+            is_deleted as "is_deleted!",
+            deleted_at as "deleted_at?: DateTime<Utc>"
+            FROM users WHERE email = ? AND is_deleted = 0
+            "#,
+            email
         )
         .fetch_optional(self.pool)
         .await?;
@@ -147,7 +180,7 @@ impl<'a> UserRepository<'a> {
             u.id as "id!",
             u.account_id as "account_id!",
             u.role_id as "role_id!",
-            u.name as "name!",
+            u.username as "username!",
             u.password_hash as "password_hash!",
             u.email as "email!",
             u.is_active as "is_active!",
@@ -176,7 +209,7 @@ impl<'a> UserRepository<'a> {
     /// `true` if a user with this username exists (and is not deleted)
     pub async fn username_exists(&self, username: &str) -> Result<bool> {
         let count = sqlx::query!(
-            "SELECT COUNT(*) as count FROM users WHERE name = ? AND is_deleted = 0",
+            "SELECT COUNT(*) as count FROM users WHERE username = ? AND is_deleted = 0",
             username
         )
         .fetch_one(self.pool)
@@ -217,7 +250,7 @@ impl<'a> UserRepository<'a> {
         exclude_user_id: &str,
     ) -> Result<bool> {
         let count = sqlx::query!(
-            "SELECT COUNT(*) as count FROM users WHERE name = ? AND id != ? AND is_deleted = 0",
+            "SELECT COUNT(*) as count FROM users WHERE username = ? AND id != ? AND is_deleted = 0",
             username,
             exclude_user_id
         )

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n            INSERT INTO users (account_id, role_id, name, password_hash, email, is_active)\n            VALUES (?, ?, ?, ?, ?, ?)\n            RETURNING \n            id as \"id!\",\n            account_id as \"account_id!\",\n            role_id as \"role_id!\",\n            name as \"name!\",\n            password_hash as \"password_hash!\",\n            email as \"email!\",\n            is_active as \"is_active!\",\n            created_at as \"created_at!: DateTime<Utc>\",\n            updated_at as \"updated_at!: DateTime<Utc>\",\n            is_deleted as \"is_deleted!\",\n            deleted_at as \"deleted_at?: DateTime<Utc>\"\n            ",
+  "query": "\n            SELECT\n            id as \"id!\",\n            account_id as \"account_id!\",\n            role_id as \"role_id!\",\n            username as \"username!\",\n            password_hash as \"password_hash!\",\n            email as \"email!\",\n            is_active as \"is_active!\",\n            created_at as \"created_at!: DateTime<Utc>\",\n            updated_at as \"updated_at!: DateTime<Utc>\",\n            is_deleted as \"is_deleted!\",\n            deleted_at as \"deleted_at?: DateTime<Utc>\"\n            FROM users WHERE username = ? AND is_deleted = 0\n            ",
   "describe": {
     "columns": [
       {
@@ -19,7 +19,7 @@
         "type_info": "Text"
       },
       {
-        "name": "name!",
+        "name": "username!",
         "ordinal": 3,
         "type_info": "Text"
       },
@@ -60,7 +60,7 @@
       }
     ],
     "parameters": {
-      "Right": 6
+      "Right": 1
     },
     "nullable": [
       true,
@@ -76,5 +76,5 @@
       true
     ]
   },
-  "hash": "485b8d017bce915470d7011e94968b0d56dcbbcd5cf3393b3164eaea6ca89cb3"
+  "hash": "5dba476fde4bc28079e0844cfe20881a3d6be047bef242ed23f8ecc0e93a471a"
 }
