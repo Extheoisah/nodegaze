@@ -15,6 +15,15 @@ pub struct Config {
     pub jwt_expires_in_seconds: u64,
     pub server_port: u16,
     pub encryption_key: String,
+
+    // Email configuration
+    pub smtp_host: Option<String>,
+    pub smtp_port: Option<u16>,
+    pub smtp_username: Option<String>,
+    pub smtp_password: Option<String>,
+    pub from_email: Option<String>,
+    pub from_name: Option<String>,
+    pub base_url: String,
 }
 
 impl Config {
@@ -48,6 +57,16 @@ impl Config {
 
         let encryption_key = env::var("ENCRYPTION_KEY").context("ENCRYPTION_KEY not set")?;
 
+        // Optional email configuration
+        let smtp_host = env::var("SMTP_HOST").ok();
+        let smtp_port = env::var("SMTP_PORT").ok().and_then(|p| p.parse().ok());
+        let smtp_username = env::var("SMTP_USERNAME").ok();
+        let smtp_password = env::var("SMTP_PASSWORD").ok();
+        let from_email = env::var("FROM_EMAIL").ok();
+        let from_name = env::var("FROM_NAME").ok();
+        // Base URL for the application, used in email links
+        let base_url = env::var("BASE_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
+
         Ok(Config {
             database_url,
             max_connections,
@@ -56,6 +75,54 @@ impl Config {
             jwt_expires_in_seconds,
             server_port,
             encryption_key,
+            smtp_host,
+            smtp_port,
+            smtp_username,
+            smtp_password,
+            from_email,
+            from_name,
+            base_url,
         })
     }
+
+    /// Returns email configuration if all required fields are present
+    pub fn email_config(&self) -> Option<EmailConfig> {
+        match (
+            &self.smtp_host,
+            &self.smtp_port,
+            &self.smtp_username,
+            &self.smtp_password,
+        ) {
+            (Some(host), Some(port), Some(username), Some(password)) => Some(EmailConfig {
+                smtp_host: host.clone(),
+                smtp_port: *port,
+                smtp_username: username.clone(),
+                smtp_password: password.clone(),
+                from_email: self.from_email.clone().unwrap_or_else(|| username.clone()),
+                from_name: self
+                    .from_name
+                    .clone()
+                    .unwrap_or_else(|| "Your App".to_string()),
+                base_url: self.base_url.clone(),
+            }),
+            _ => None,
+        }
+    }
+
+    /// Check if email is configured
+    pub fn is_email_configured(&self) -> bool {
+        self.email_config().is_some()
+    }
+}
+
+/// Email-specific configuration extracted from main Config
+#[derive(Debug, Clone)]
+pub struct EmailConfig {
+    pub smtp_host: String,
+    pub smtp_port: u16,
+    pub smtp_username: String,
+    pub smtp_password: String,
+    pub from_email: String,
+    pub from_name: String,
+    pub base_url: String,
 }

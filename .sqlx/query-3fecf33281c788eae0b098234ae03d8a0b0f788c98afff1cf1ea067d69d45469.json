@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT COUNT(*) as count FROM accounts WHERE is_deleted = 0 AND is_active = 1",
+  "query": "SELECT COUNT(*) as count FROM users WHERE email = ? AND id != ? AND is_deleted = 0",
   "describe": {
     "columns": [
       {
@@ -10,11 +10,11 @@
       }
     ],
     "parameters": {
-      "Right": 0
+      "Right": 2
     },
     "nullable": [
       false
     ]
   },
-  "hash": "437f13faf9ed3777c58b4b26ce990f28e17ebab380248a969b5fad47e2685353"
+  "hash": "3fecf33281c788eae0b098234ae03d8a0b0f788c98afff1cf1ea067d69d45469"
 }

@@ -120,7 +120,7 @@ impl<'a> AuthService<'a> {
 
         let user_info = UserInfo {
             id: user_id,
-            name: user.name,
+            username: user.username,
             email: user.email,
             account_id: account_id,
             account_name: account.name,
