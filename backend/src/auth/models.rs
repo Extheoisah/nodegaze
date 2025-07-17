@@ -23,7 +23,7 @@ pub struct LoginResponse {
     pub access_token: String,
     pub refresh_token: String,
     pub user: UserInfo,
-    pub expires_in: usize, // Token expiration in seconds
+    pub expires_in: u64, // Token expiration in seconds
 }
 
 /// User information returned in login response
@@ -49,7 +49,7 @@ pub struct RefreshTokenRequest {
 #[derive(Debug, Serialize)]
 pub struct RefreshTokenResponse {
     pub access_token: String,
-    pub expires_in: usize,
+    pub expires_in: u64,
 }
 
 /// Node credentials storage request
@@ -83,7 +83,7 @@ pub struct StoreNodeCredentialsRequest {
 pub struct StoreNodeCredentialsResponse {
     pub access_token: String,
     pub credential_id: String,
-    pub expires_in: usize,
+    pub expires_in: u64,
 }
 
 /// Response after revoking node credentials
@@ -91,5 +91,5 @@ pub struct StoreNodeCredentialsResponse {
 pub struct RevokeNodeCredentialsResponse {
     pub access_token: String,
     pub revoked: bool,
-    pub expires_in: usize,
+    pub expires_in: u64,
 }

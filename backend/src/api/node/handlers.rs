@@ -27,7 +27,7 @@ pub struct NodeAuthResponse {
 #[axum::debug_handler]
 pub async fn authenticate_node(
     Extension(pool): Extension<SqlitePool>,
-    Extension(claims): Extension<Option<Claims>>, // This should now work
+    Extension(claims): Extension<Option<Claims>>,
     Json(payload): Json<ConnectionRequest>,
 ) -> Result<Json<NodeAuthResponse>, (StatusCode, String)> {
     // First authenticate with the node

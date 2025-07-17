@@ -15,6 +15,7 @@ pub struct AuthService<'a> {
     pool: &'a SqlitePool,
     jwt_utils: JwtUtils,
     user_service: UserService<'a>,
+    config: Config,
 }
 
 impl<'a> AuthService<'a> {
@@ -22,11 +23,13 @@ impl<'a> AuthService<'a> {
     pub fn new(pool: &'a SqlitePool) -> ServiceResult<Self> {
         let jwt_utils = JwtUtils::new()?;
         let user_service = UserService::new(pool);
+        let config = Config::from_env()?;
 
         Ok(AuthService {
             pool,
             jwt_utils,
             user_service,
+            config,
         })
     }
 
@@ -71,7 +74,7 @@ impl<'a> AuthService<'a> {
         // Store user ID before potential moves
         let user_id = user.id.clone();
         let account_id = account.id.clone();
-        let user_account_id = user.account_id.clone();
+        let _user_account_id = user.account_id.clone();
         let user_role_id = user.role_id.clone();
 
         // Check for existing node credentials and convert them to JWT format
@@ -112,6 +115,9 @@ impl<'a> AuthService<'a> {
             .await?
             .is_some();
 
+        // Get expires_in from config
+        let expires_in = self.config.jwt_expires_in_seconds;
+
         let user_info = UserInfo {
             id: user_id,
             name: user.name,
@@ -126,7 +132,7 @@ impl<'a> AuthService<'a> {
             access_token,
             refresh_token,
             user: user_info,
-            expires_in: 24 * 60 * 60, // 24 hours in seconds
+            expires_in,
         })
     }
 
@@ -210,7 +216,7 @@ impl<'a> AuthService<'a> {
         Ok(StoreNodeCredentialsResponse {
             access_token,
             credential_id: credential.id,
-            expires_in: 24 * 60 * 60, // 24 hours
+            expires_in: self.config.jwt_expires_in_seconds,
         })
     }
 
@@ -241,7 +247,7 @@ impl<'a> AuthService<'a> {
         Ok(RevokeNodeCredentialsResponse {
             access_token,
             revoked: true,
-            expires_in: 24 * 60 * 60,
+            expires_in: self.config.jwt_expires_in_seconds,
         })
     }
 
@@ -296,7 +302,7 @@ impl<'a> AuthService<'a> {
 
         Ok(RefreshTokenResponse {
             access_token,
-            expires_in: 24 * 60 * 60, // 24 hours
+            expires_in: self.config.jwt_expires_in_seconds,
         })
     }
 
@@ -309,14 +315,11 @@ impl<'a> AuthService<'a> {
 
     /// Helper method to get user role name
     async fn get_user_role_name(&self, role_id: &str) -> ServiceResult<String> {
-        let role = sqlx::query!(
-            "SELECT name FROM roles WHERE id = ? AND is_deleted = 0",
-            role_id
-        )
-        .fetch_optional(self.pool)
-        .await
-        .map_err(|e| ServiceError::Database { source: e.into() })?
-        .ok_or_else(|| ServiceError::not_found("Role", role_id))?;
+        let role_repo = crate::repositories::role_repository::RoleRepository::new(self.pool);
+        let role = role_repo
+            .get_role_by_id(role_id)
+            .await?
+            .ok_or_else(|| ServiceError::not_found("Role", role_id))?;
 
         Ok(role.name)
     }

@@ -7,6 +7,7 @@ use chrono::{Duration, Utc};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 
+use crate::config::Config;
 use crate::errors::ServiceError;
 
 /// JWT Claims structure containing user and node authentication data
@@ -74,8 +75,13 @@ impl JwtUtils {
         role: String,
         node_credentials: Option<NodeCredentials>,
     ) -> Result<String, ServiceError> {
+        // Get expires_in from config
+        let config = Config::from_env()
+            .map_err(|e| ServiceError::validation(format!("Config error: {}", e)))?;
+        let expires_in = config.jwt_expires_in_seconds;
+
         let now = Utc::now();
-        let exp = now + Duration::hours(24); // Token expires in 24 hours
+        let exp = now + Duration::seconds(expires_in as i64);
 
         let claims = Claims {
             sub: user_id,

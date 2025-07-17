@@ -192,7 +192,7 @@ pub struct CreateCredential {
     pub ca_cert: Option<String>,
 }
 
-// Custom validation function (keep existing)
+// Custom validation function
 fn validate_socket_address(address: &str) -> Result<(), validator::ValidationError> {
     if !address.contains(':') {
         return Err(validator::ValidationError::new(

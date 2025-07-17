@@ -12,6 +12,7 @@ pub struct Config {
     pub max_connections: u32,
     pub acquire_timeout_seconds: u64,
     pub jwt_secret: String,
+    pub jwt_expires_in_seconds: u64,
     pub server_port: u16,
 }
 
@@ -34,6 +35,11 @@ impl Config {
 
         let jwt_secret = env::var("JWT_SECRET").context("JWT_SECRET not set")?;
 
+        let jwt_expires_in_seconds = env::var("JWT_EXPIRES_IN_SECONDS")
+            .unwrap_or_else(|_| "86400".to_string())
+            .parse::<u64>()
+            .context("JWT_EXPIRES_IN_SECONDS must be a valid number")?;
+
         let server_port = env::var("SERVER_PORT")
             .unwrap_or_else(|_| "3000".to_string())
             .parse::<u16>()
@@ -44,6 +50,7 @@ impl Config {
             max_connections,
             acquire_timeout_seconds,
             jwt_secret,
+            jwt_expires_in_seconds,
             server_port,
         })
     }
