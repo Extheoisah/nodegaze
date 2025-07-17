@@ -68,7 +68,7 @@ pub async fn store_node_credentials(
     }
 }
 
-//// Handle node credentials revocation request
+/// Handle node credentials revocation request
 #[axum::debug_handler]
 pub async fn revoke_node_credentials(
     Extension(pool): Extension<SqlitePool>,
