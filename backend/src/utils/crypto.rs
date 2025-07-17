@@ -1,20 +1,20 @@
-//! String encryption/decryption using AES-256-GCM with environment-based key management.
+//! String encryption/decryption using AES-256-GCM with direct key support.
 //!
 //! ## Usage
 //!
 //! ```rust
-//! let crypto = StringCrypto::new("ENCRYPTION_KEY")?;
-//! let encrypted = crypto.encrypt("secret data")?;
-//! let decrypted = crypto.decrypt(&encrypted)?;
+//! let encrypted = StringCrypto::encrypt("secret data")?;
+//! let decrypted = StringCrypto::decrypt(&encrypted)?;
 //! ```
 
+use crate::config::Config;
+use aes_gcm::aead::rand_core::{OsRng, RngCore};
 use aes_gcm::{
     Aes256Gcm, Key, Nonce,
     aead::{Aead, KeyInit},
 };
 use base64::{Engine as _, engine::general_purpose};
 use dotenvy::var;
-use rand::{RngCore, rngs::OsRng};
 
 #[derive(Debug)]
 pub enum CryptoError {
@@ -37,25 +37,20 @@ impl std::fmt::Display for CryptoError {
 
 impl std::error::Error for CryptoError {}
 
-/// AES-256-GCM encryption/decryption for strings using environment variables for key storage.
-pub struct StringCrypto {
-    cipher: Aes256Gcm,
-}
+/// AES-256-GCM encryption/decryption for strings.
+pub struct StringCrypto;
 
 impl StringCrypto {
-    /// Create a new instance using a key from the specified environment variable.
-    ///
-    /// The key can be either:
-    /// - 44-character base64-encoded string (recommended)
-    /// - Raw string (will be padded/truncated to 32 bytes)
-    pub fn new(env_key_name: &str) -> Result<Self, CryptoError> {
-        let key_str = var(env_key_name).map_err(|_| CryptoError::InvalidKey)?;
+    /// Create a cipher instance from the environment key
+    fn create_cipher() -> Result<Aes256Gcm, CryptoError> {
+        let config = Config::from_env().unwrap();
+        let key_str = config.encryption_key;
 
         // Decode base64 key or use raw bytes
         let key_bytes = if key_str.len() == 44 {
             // Assume base64 encoded key
             general_purpose::STANDARD
-                .decode(&key_str)
+                .decode(key_str)
                 .map_err(|_| CryptoError::InvalidKey)?
         } else {
             // Use raw string bytes (pad or truncate to 32 bytes)
@@ -73,20 +68,21 @@ impl StringCrypto {
         let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
         let cipher = Aes256Gcm::new(key);
 
-        Ok(StringCrypto { cipher })
+        Ok(cipher)
     }
 
     /// Encrypt a string and return base64 encoded result.
     /// Each encryption uses a unique nonce for security.
-    pub fn encrypt(&self, plaintext: &str) -> Result<String, CryptoError> {
+    pub fn encrypt(plaintext: &str) -> Result<String, CryptoError> {
+        let cipher = Self::create_cipher()?;
+        
         // Generate random nonce
         let mut nonce_bytes = [0u8; 12];
-        OsRng.fill_bytes(&mut nonce_bytes);
+        OsRng::default().fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         // Encrypt the plaintext
-        let ciphertext = self
-            .cipher
+        let ciphertext = cipher
             .encrypt(nonce, plaintext.as_bytes())
             .map_err(|_| CryptoError::EncryptionFailed)?;
 
@@ -100,7 +96,9 @@ impl StringCrypto {
     }
 
     /// Decrypt a base64 encoded string that was encrypted with `encrypt()`.
-    pub fn decrypt(&self, encrypted_data: &str) -> Result<String, CryptoError> {
+    pub fn decrypt(encrypted_data: &str) -> Result<String, CryptoError> {
+        let cipher = Self::create_cipher()?;
+        
         // Decode base64
         let data = general_purpose::STANDARD
             .decode(encrypted_data)
@@ -115,8 +113,7 @@ impl StringCrypto {
         let nonce = Nonce::from_slice(nonce_bytes);
 
         // Decrypt
-        let plaintext = self
-            .cipher
+        let plaintext = cipher
             .decrypt(nonce, ciphertext)
             .map_err(|_| CryptoError::DecryptionFailed)?;
 
@@ -128,41 +125,36 @@ impl StringCrypto {
 /// Generate a new base64-encoded 256-bit encryption key.
 pub fn generate_key() -> String {
     let mut key = [0u8; 32];
-    OsRng.fill_bytes(&mut key);
+    OsRng::default().fill_bytes(&mut key);
     general_purpose::STANDARD.encode(key)
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use std::env;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
 
-//     #[test]
-//     fn test_encrypt_decrypt() {
-//         env::set_var("TEST_KEY", generate_key());
-//         let crypto = StringCrypto::new("TEST_KEY").unwrap();
-//         let original = "Test message";
+    #[test]
+    fn test_encrypt_decrypt() {
+        let original = "Test message";
 
-//         let encrypted = crypto.encrypt(original).unwrap();
-//         let decrypted = crypto.decrypt(&encrypted).unwrap();
+        let encrypted = StringCrypto::encrypt(original).unwrap();
+        let decrypted = StringCrypto::decrypt(&encrypted).unwrap();
 
-//         assert_eq!(original, decrypted);
-//     }
+        assert_eq!(original, decrypted);
+    }
 
-//     #[test]
-//     fn test_unique_nonces() {
-//         env::set_var("TEST_KEY2", generate_key());
-//         let crypto = StringCrypto::new("TEST_KEY2").unwrap();
+    #[test]
+    fn test_unique_nonces() {
+        let msg = "Same message";
+        let enc1 = StringCrypto::encrypt(msg).unwrap();
+        let enc2 = StringCrypto::encrypt(msg).unwrap();
 
-//         let msg = "Same message";
-//         let enc1 = crypto.encrypt(msg).unwrap();
-//         let enc2 = crypto.encrypt(msg).unwrap();
+        // Same message should produce different ciphertext
+        assert_ne!(enc1, enc2);
 
-//         // Same message should produce different ciphertext
-//         assert_ne!(enc1, enc2);
-
-//         // But both should decrypt correctly
-//         assert_eq!(crypto.decrypt(&enc1).unwrap(), msg);
-//         assert_eq!(crypto.decrypt(&enc2).unwrap(), msg);
-//     }
-// }
+        // But both should decrypt correctly
+        assert_eq!(StringCrypto::decrypt(&enc1).unwrap(), msg);
+        assert_eq!(StringCrypto::decrypt(&enc2).unwrap(), msg);
+    }
+}

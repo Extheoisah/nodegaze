@@ -13,12 +13,15 @@ mod repositories;
 mod services;
 mod utils;
 
+use crate::crypto::StringCrypto;
 use axum::{Extension, Router, response::Json, routing::get};
 use config::Config;
 use database::Database;
 use serde_json::{Value, json};
 use tracing::info;
 use tracing_subscriber::fmt::init;
+
+use crate::utils::crypto;
 
 #[tokio::main]
 async fn main() {
@@ -27,6 +30,12 @@ async fn main() {
     let config = Config::from_env().unwrap();
     let db = Database::new(&config).await.unwrap();
     let pool = db.pool().clone();
+
+    let encrypted = StringCrypto::encrypt("hello world").unwrap();
+    println!("encrypted {:?}", encrypted);
+
+    let decryted = StringCrypto::decrypt(&encrypted.as_str()).unwrap();
+    println!("decrypted {:?}", decryted);
 
     let app = Router::new()
         .route("/", get(root_handler))
