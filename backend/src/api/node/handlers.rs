@@ -9,7 +9,7 @@ use crate::services::node_manager::{
     ClnConnection, ClnNode, ConnectionRequest, LndConnection, LndNode,
 };
 use crate::utils::jwt::Claims;
-use crate::utils::{NodeId, NodeInfo, crypto::StringCrypto};
+use crate::utils::{NodeId, NodeInfo};
 use axum::{
     extract::{Extension, Json},
     http::StatusCode,
