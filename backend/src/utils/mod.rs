@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
 pub mod crypto;
+pub mod generate_random_string;
 pub mod jwt;
 
 /// Represents a node id, either by its public key or alias.

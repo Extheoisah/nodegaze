@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n            SELECT \n            id as \"id!\",\n            name as \"name!\",\n            is_active as \"is_active!\",\n            created_at as \"created_at!: DateTime<Utc>\",\n            updated_at as \"updated_at!: DateTime<Utc>\",\n            is_deleted as \"is_deleted!\",\n            deleted_at as \"deleted_at?: DateTime<Utc>\"\n            FROM roles WHERE name = ? AND is_deleted = 0\n            ",
+  "query": "\n            INSERT INTO accounts (name, is_active)\n            VALUES (?, ?)\n            RETURNING\n            id as \"id!\",\n            name as \"name!\",\n            is_active as \"is_active!\",\n            created_at as \"created_at!: chrono::DateTime<chrono::Utc>\",\n            updated_at as \"updated_at!: chrono::DateTime<chrono::Utc>\",\n            is_deleted as \"is_deleted!\",\n            deleted_at as \"deleted_at?: chrono::DateTime<chrono::Utc>\"\n            ",
   "describe": {
     "columns": [
       {
@@ -19,12 +19,12 @@
         "type_info": "Bool"
       },
       {
-        "name": "created_at!: DateTime<Utc>",
+        "name": "created_at!: chrono::DateTime<chrono::Utc>",
         "ordinal": 3,
         "type_info": "Datetime"
       },
       {
-        "name": "updated_at!: DateTime<Utc>",
+        "name": "updated_at!: chrono::DateTime<chrono::Utc>",
         "ordinal": 4,
         "type_info": "Datetime"
       },
@@ -34,13 +34,13 @@
         "type_info": "Bool"
       },
       {
-        "name": "deleted_at?: DateTime<Utc>",
+        "name": "deleted_at?: chrono::DateTime<chrono::Utc>",
         "ordinal": 6,
         "type_info": "Datetime"
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 2
     },
     "nullable": [
       true,
@@ -52,5 +52,5 @@
       true
     ]
   },
-  "hash": "2b0569f934f4d173d339fd3c7f36c0ed7fa5f4aea92c63751ea5ec3d44c61d10"
+  "hash": "8cc9368eea77b5592ffbc999671f305fc1a4733a7ad96b480d079917e0bb61d8"
 }

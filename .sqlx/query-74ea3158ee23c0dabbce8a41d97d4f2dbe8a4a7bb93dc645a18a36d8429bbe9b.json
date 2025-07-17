@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT COUNT(*) as count FROM accounts WHERE name = ? AND id != ? AND is_deleted = 0",
+  "query": "SELECT COUNT(*) as count FROM users WHERE username = ? AND is_deleted = 0",
   "describe": {
     "columns": [
       {
@@ -10,11 +10,11 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 1
     },
     "nullable": [
       false
     ]
   },
-  "hash": "1b442d29ef52667c67d2157b42e49eda35f737800323a93fc87846241954c220"
+  "hash": "74ea3158ee23c0dabbce8a41d97d4f2dbe8a4a7bb93dc645a18a36d8429bbe9b"
 }
