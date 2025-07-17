@@ -14,6 +14,7 @@ pub struct Config {
     pub jwt_secret: String,
     pub jwt_expires_in_seconds: u64,
     pub server_port: u16,
+    pub encryption_key: String,
 }
 
 impl Config {
@@ -45,6 +46,8 @@ impl Config {
             .parse::<u16>()
             .context("SERVER_PORT must be a valid number")?;
 
+        let encryption_key = env::var("ENCRYPTION_KEY").context("ENCRYPTION_KEY not set")?;
+
         Ok(Config {
             database_url,
             max_connections,
@@ -52,6 +55,7 @@ impl Config {
             jwt_secret,
             jwt_expires_in_seconds,
             server_port,
+            encryption_key,
         })
     }
 }
