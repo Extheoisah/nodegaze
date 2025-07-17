@@ -3,16 +3,17 @@
 //! This module serves as a repository for small, reusable helper functions
 //! or traits that do not fit into other specific domain modules.
 
-use serde::{Serialize, Deserialize};
-use bitcoin::secp256k1::PublicKey;
-use std::fmt::{Display, Formatter};
 use crate::errors::LightningError;
+use bitcoin::secp256k1::PublicKey;
+use bitcoin::{Address, OutPoint, ScriptBuf};
 use expanduser::expanduser;
 use lightning::ln::features::NodeFeatures;
-use bitcoin::{Address, ScriptBuf, OutPoint};
 use lightning::ln::{PaymentHash, PaymentPreimage, PaymentSecret};
+use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
 
 pub mod crypto;
+pub mod jwt;
 
 /// Represents a node id, either by its public key or alias.
 #[derive(Serialize, Debug, Clone)]
@@ -34,7 +35,7 @@ impl NodeId {
                         pk, node_id
                     )));
                 }
-            },
+            }
             NodeId::Alias(a) => {
                 if a != alias {
                     return Err(LightningError::ValidationError(format!(
@@ -42,7 +43,7 @@ impl NodeId {
                         a, alias
                     )));
                 }
-            },
+            }
         }
         Ok(())
     }
@@ -153,7 +154,7 @@ pub struct NodeLog {
 }
 
 // Aggregated metrics and statistics about a Lightning Network node.
-/// 
+///
 /// Provides a comprehensive view of node performance, resource usage,
 /// and operational health for monitoring and alerting purposes.
 #[derive(Debug, Serialize, Deserialize)]
@@ -226,7 +227,7 @@ pub enum ChannelStatus {
     WaitingClose,
     Pending,
     Inactive,
-    Unknown
+    Unknown,
 }
 
 /// The status of a Lightning invoice.

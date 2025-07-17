@@ -47,12 +47,6 @@ pub struct FieldError {
 /// - HTTP status codes
 /// - Standardized error response format
 /// - Proper error categorization
-///
-/// # Examples
-/// ```
-/// let error = ServiceError::NotFound { /* ... */ };
-/// let (status, json) = service_error_to_http(error);
-/// ```
 pub fn service_error_to_http(error: ServiceError) -> (StatusCode, String) {
     let (status, error_type, message) = match error {
         ServiceError::Validation { message } => {
@@ -75,7 +69,7 @@ pub fn service_error_to_http(error: ServiceError) -> (StatusCode, String) {
             (StatusCode::BAD_REQUEST, "invalid_operation", message)
         }
         ServiceError::Database { source } => {
-            eprintln!("Database error: {}", source);
+            tracing::error!("Database error: {}", source);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "database_error",

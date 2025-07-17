@@ -5,6 +5,7 @@
 //! It orchestrates the application's startup and defines its overall structure.
 
 mod api;
+mod auth;
 mod config;
 mod database;
 mod errors;
@@ -27,6 +28,7 @@ async fn main() {
         .route("/", get(root_handler))
         .nest("/api/node", api::node::routes::node_router().await)
         .nest("/api/account", api::account::routes::account_router().await)
+        .nest("/auth", auth::routes::auth_router())
         .layer(Extension(pool));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
