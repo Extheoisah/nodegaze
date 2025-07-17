@@ -11,7 +11,8 @@ pub struct Config {
     pub database_url: String,
     pub max_connections: u32,
     pub acquire_timeout_seconds: u64,
-    pub encryption_key: String,
+    pub jwt_secret: String,
+    pub server_port: u16,
 }
 
 impl Config {
@@ -31,13 +32,19 @@ impl Config {
             .parse::<u64>()
             .context("DB_ACQUIRE_TIMEOUT_SECONDS must be a valid number")?;
 
-        let encryption_key = env::var("ENCRYPTION_KEY").context("ENCRYPTION_KEY not set")?;
+        let jwt_secret = env::var("JWT_SECRET").context("JWT_SECRET not set")?;
+
+        let server_port = env::var("SERVER_PORT")
+            .unwrap_or_else(|_| "3000".to_string())
+            .parse::<u16>()
+            .context("SERVER_PORT must be a valid number")?;
 
         Ok(Config {
             database_url,
             max_connections,
             acquire_timeout_seconds,
-            encryption_key,
+            jwt_secret,
+            server_port,
         })
     }
 }

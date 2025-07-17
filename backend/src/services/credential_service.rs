@@ -1,15 +1,12 @@
 //! Credential business logic service.
 //!
-//! Handles all account-related business operations
+//! Handles all credential-related business operations
 
-use crate::config::Config;
 use crate::database::models::{CreateCredential, Credential};
 use crate::errors::{ServiceError, ServiceResult};
 use crate::repositories::account_repository::AccountRepository;
 use crate::repositories::credential_repository::CredentialRepository;
-use crate::repositories::role_repository::RoleRepository;
 use crate::repositories::user_repository::UserRepository;
-use crate::utils::crypto::StringCrypto;
 use sqlx::SqlitePool;
 use validator::Validate;
 
@@ -86,32 +83,9 @@ impl<'a> CredentialService<'a> {
             return Err(ServiceError::not_found("User", &create_credential.user_id));
         }
 
-        // Encrypt the credential value
-        let config = Config::from_env().unwrap();
-        let crypto = StringCrypto::new(&config.encryption_key)
-            .map_err(|e| ServiceError::validation(&format!("Crypto initialization failed: {e}")))?;
-
-        let encrypted_macaroon = crypto
-            .encrypt(&create_credential.macaroon)
-            .map_err(|e| ServiceError::validation(&format!("Encryption failed: {e}")))?;
-
-        let encrypted_tls_cert = crypto
-            .encrypt(&create_credential.tls_cert)
-            .map_err(|e| ServiceError::validation(&format!("Encryption failed: {e}")))?;
-
-        let new_credential = CreateCredential {
-            macaroon: encrypted_macaroon,
-            tls_cert: encrypted_tls_cert,
-            account_id: create_credential.account_id,
-            user_id: create_credential.user_id,
-            node_alias: create_credential.node_alias,
-            node_id: create_credential.node_id,
-            address: create_credential.address,
-        };
-
-        // Create the credential
+        // Create the credential (no encryption needed anymore)
         let repo = CredentialRepository::new(self.pool);
-        let credential = repo.create_credential(new_credential).await?;
+        let credential = repo.create_credential(create_credential).await?;
         Ok(credential)
     }
 
@@ -131,6 +105,25 @@ impl<'a> CredentialService<'a> {
             .get_credential_by_id(id)
             .await?
             .ok_or_else(|| ServiceError::not_found("Credential", id))?;
+        Ok(credential)
+    }
+
+    /// Retrieves credentials by user ID with existence verification.
+    ///
+    /// # Arguments
+    /// * `user_id` - User ID (UUID format)
+    ///
+    /// # Returns
+    /// The requested Credential if found
+    ///
+    /// # Errors
+    /// Returns `ServiceError::NotFound` if credential doesn't exist for the user
+    pub async fn get_credential_by_user_id(
+        &self,
+        user_id: &str,
+    ) -> ServiceResult<Option<Credential>> {
+        let repo = CredentialRepository::new(self.pool);
+        let credential = repo.get_credential_by_user_id(user_id).await?;
         Ok(credential)
     }
 }

@@ -38,7 +38,7 @@ impl<'a> AccountService<'a> {
     /// # Errors
     /// Returns `ServiceError` for:
     /// - Validation failures
-    /// - Duplicate account names
+    /// - Duplicate account names, usernames, or emails
     /// - Missing required roles
     /// - Business rule violations
     pub async fn create_account(
@@ -64,46 +64,137 @@ impl<'a> AccountService<'a> {
             return Err(ServiceError::validation(error_messages.join(", ")));
         }
 
-        let repo = AccountRepository::new(self.pool);
+        // Pre-validation checks
+        let account_repo = AccountRepository::new(self.pool);
+        let user_repo = crate::repositories::user_repository::UserRepository::new(self.pool);
 
         // Check if account name already exists
-        if repo.account_name_exists(&create_account.name).await? {
+        if account_repo
+            .account_name_exists(&create_account.name)
+            .await?
+        {
             return Err(ServiceError::already_exists(
                 "Account",
                 &create_account.name,
             ));
         }
 
+        // Check if username already exists
+        if user_repo.username_exists(&create_account.username).await? {
+            return Err(ServiceError::already_exists(
+                "User with username",
+                &create_account.username,
+            ));
+        }
+
+        // Check if email already exists
+        if user_repo.email_exists(&create_account.email).await? {
+            return Err(ServiceError::already_exists(
+                "User with email",
+                &create_account.email,
+            ));
+        }
+
         // Business validation
         self.validate_business_rules(&create_account)?;
 
-        // Check if the role exists
+        // Check if the Admin role exists
         let role_repo = RoleRepository::new(self.pool);
         let role = role_repo.get_role_by_name("Admin").await?;
         if role.is_none() {
             return Err(ServiceError::not_found("Role", "Admin"));
         }
 
+        let role = role.unwrap();
+
+        // Start a transaction for atomic account + user creation
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| ServiceError::Database { source: e.into() })?;
+
+        // Create the account
         let new_account = CreateAccount {
             name: create_account.name.clone(),
             username: create_account.username.clone(),
             email: create_account.email.clone(),
         };
 
-        // Create the account
-        let account = repo.create_account(new_account).await?;
+        let account = sqlx::query_as!(
+            crate::database::models::Account,
+            r#"
+            INSERT INTO accounts (name, is_active)
+            VALUES (?, ?)
+            RETURNING
+            id as "id!",
+            name as "name!",
+            is_active as "is_active!",
+            created_at as "created_at!: chrono::DateTime<chrono::Utc>",
+            updated_at as "updated_at!: chrono::DateTime<chrono::Utc>",
+            is_deleted as "is_deleted!",
+            deleted_at as "deleted_at?: chrono::DateTime<chrono::Utc>"
+            "#,
+            new_account.name,
+            true
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| {
+            let error_msg = e.to_string();
+            if error_msg.contains("UNIQUE constraint failed: accounts.name") {
+                ServiceError::already_exists("Account", &create_account.name)
+            } else {
+                ServiceError::Database { source: e.into() }
+            }
+        })?;
 
         // Create the admin user for the account
-        let user_service = UserService::new(self.pool);
-        let create_user = CreateNewUser {
-            account_id: account.id.clone(),
-            name: create_account.username.clone(),
-            email: create_account.email.clone(),
-            role_id: role.unwrap().id.clone(),
-            password: create_account.password.clone(),
-        };
+        let password_hash = bcrypt::hash(&create_account.password, bcrypt::DEFAULT_COST)
+            .map_err(|e| ServiceError::validation(format!("Password hashing failed: {}", e)))?;
 
-        let user = user_service.create_user(create_user).await?;
+        let user = sqlx::query_as!(
+            crate::database::models::User,
+            r#"
+            INSERT INTO users (account_id, role_id, name, password_hash, email, is_active)
+            VALUES (?, ?, ?, ?, ?, ?)
+            RETURNING
+            id as "id!",
+            account_id as "account_id!",
+            role_id as "role_id!",
+            name as "name!",
+            password_hash as "password_hash!",
+            email as "email!",
+            is_active as "is_active!",
+            created_at as "created_at!: chrono::DateTime<chrono::Utc>",
+            updated_at as "updated_at!: chrono::DateTime<chrono::Utc>",
+            is_deleted as "is_deleted!",
+            deleted_at as "deleted_at?: chrono::DateTime<chrono::Utc>"
+            "#,
+            account.id,
+            role.id,
+            create_account.username,
+            password_hash,
+            create_account.email,
+            true
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| {
+            let error_msg = e.to_string();
+            if error_msg.contains("UNIQUE constraint failed: users.name") {
+                ServiceError::already_exists("User with username", &create_account.username)
+            } else if error_msg.contains("UNIQUE constraint failed: users.email") {
+                ServiceError::already_exists("User with email", &create_account.email)
+            } else {
+                ServiceError::Database { source: e.into() }
+            }
+        })?;
+
+        // Commit the transaction
+        tx.commit()
+            .await
+            .map_err(|e| ServiceError::Database { source: e.into() })?;
 
         // Return the created account and user
         let user_with_account = UserWithAccount { account, user };

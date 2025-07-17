@@ -149,6 +149,10 @@ pub struct Credential {
     pub macaroon: String,
     pub tls_cert: String,
     pub address: String,
+    pub node_type: Option<String>,   // "lnd" or "cln"
+    pub client_cert: Option<String>, // For CLN
+    pub client_key: Option<String>,  // For CLN
+    pub ca_cert: Option<String>,     // For CLN
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -181,9 +185,14 @@ pub struct CreateCredential {
         custom(function = "validate_socket_address")
     )]
     pub address: String,
+
+    pub node_type: Option<String>,
+    pub client_cert: Option<String>,
+    pub client_key: Option<String>,
+    pub ca_cert: Option<String>,
 }
 
-// Custom validation function
+// Custom validation function (keep existing)
 fn validate_socket_address(address: &str) -> Result<(), validator::ValidationError> {
     if !address.contains(':') {
         return Err(validator::ValidationError::new(

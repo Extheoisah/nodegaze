@@ -2,7 +2,6 @@
 //!
 //! Handles all account-related business operations
 
-use crate::api::account;
 use crate::database::models::{CreateNewUser, CreateUser, User};
 use crate::errors::{ServiceError, ServiceResult};
 use crate::repositories::account_repository::AccountRepository;
@@ -10,7 +9,6 @@ use crate::repositories::role_repository::RoleRepository;
 use crate::repositories::user_repository::UserRepository;
 use bcrypt::{DEFAULT_COST, hash, verify};
 use sqlx::SqlitePool;
-use std::error::Error;
 use validator::Validate;
 
 pub struct UserService<'a> {
@@ -39,7 +37,7 @@ impl<'a> UserService<'a> {
     /// Returns `ServiceError` for:
     /// - Validation failures
     /// - Non-existent account or role
-    /// - Duplicate admin users for account
+    /// - Duplicate usernames or emails
     /// - Business rule violations
     pub async fn create_user(&self, create_user: CreateNewUser) -> ServiceResult<User> {
         // Input validation using validator crate
@@ -61,6 +59,24 @@ impl<'a> UserService<'a> {
             return Err(ServiceError::validation(error_messages.join(", ")));
         }
 
+        let repo = UserRepository::new(self.pool);
+
+        // Check if username already exists globally
+        if repo.username_exists(&create_user.name).await? {
+            return Err(ServiceError::already_exists(
+                "User with username",
+                &create_user.name,
+            ));
+        }
+
+        // Check if email already exists globally
+        if repo.email_exists(&create_user.email).await? {
+            return Err(ServiceError::already_exists(
+                "User with email",
+                &create_user.email,
+            ));
+        }
+
         // Check if the account exists
         let account_repo = AccountRepository::new(self.pool);
         if account_repo
@@ -71,24 +87,6 @@ impl<'a> UserService<'a> {
             return Err(ServiceError::not_found("Account", &create_user.account_id));
         }
 
-        let repo = UserRepository::new(self.pool);
-
-        // Check if user already exists
-        //todo: Implement user existence check
-        if repo
-            .get_admin_user_by_account_id(&create_user.account_id)
-            .await?
-            .is_some()
-        {
-            return Err(ServiceError::already_exists(
-                "Admin User",
-                &create_user.name,
-            ));
-        }
-
-        // Business validation
-        self.validate_business_rules(&create_user)?;
-
         // Check if role exists
         let role_repo = RoleRepository::new(self.pool);
         let role = role_repo.get_role_by_id(&create_user.role_id).await?;
@@ -97,9 +95,30 @@ impl<'a> UserService<'a> {
             return Err(ServiceError::not_found("Role", &create_user.role_id));
         }
 
+        // Additional check: if this is an admin role, ensure no other admin exists for this account
+        let role = role.unwrap();
+        if role.name == "Admin" {
+            if repo
+                .get_admin_user_by_account_id(&create_user.account_id)
+                .await?
+                .is_some()
+            {
+                return Err(ServiceError::already_exists(
+                    "Admin user for account",
+                    &create_user.account_id,
+                ));
+            }
+        }
+
+        // Business validation
+        self.validate_business_rules(&create_user)?;
+
         // Hash the password with proper error handling
         let password_hash = Self::hash_password(&create_user.password)?;
-        println!("Hashed password: {}", password_hash);
+
+        // Store values before moving them into CreateUser
+        let name = create_user.name.clone();
+        let email = create_user.email.clone();
 
         let data = CreateUser {
             account_id: create_user.account_id,
@@ -109,8 +128,18 @@ impl<'a> UserService<'a> {
             password_hash,
         };
 
-        // Create the user
-        let user = repo.create_user(data).await?;
+        let user = repo.create_user(data).await.map_err(|e| {
+            // Handle potential database constraint violations
+            let error_msg = e.to_string();
+            if error_msg.contains("UNIQUE constraint failed: users.name") {
+                ServiceError::already_exists("User with username", &name)
+            } else if error_msg.contains("UNIQUE constraint failed: users.email") {
+                ServiceError::already_exists("User with email", &email)
+            } else {
+                ServiceError::Database { source: e }
+            }
+        })?;
+
         Ok(user)
     }
 
@@ -161,6 +190,46 @@ impl<'a> UserService<'a> {
             .get_user_by_id(id)
             .await?
             .ok_or_else(|| ServiceError::not_found("User", id))?;
+        Ok(user)
+    }
+
+    /// Authenticates a user with username and password.
+    ///
+    /// # Arguments
+    /// * `username` - Username to authenticate
+    /// * `password` - Plain text password to verify
+    ///
+    /// # Returns
+    /// The authenticated User if credentials are valid
+    ///
+    /// # Errors
+    /// Returns `ServiceError` for:
+    /// - Invalid username or password
+    /// - Inactive user accounts
+    /// - Database errors
+    pub async fn authenticate_user(&self, username: &str, password: &str) -> ServiceResult<User> {
+        let repo = UserRepository::new(self.pool);
+
+        // Get user by username
+        let user = repo
+            .get_user_by_username(username)
+            .await?
+            .ok_or_else(|| ServiceError::validation("Invalid username or password".to_string()))?;
+
+        // Check if user is active
+        if !user.is_active {
+            return Err(ServiceError::validation(
+                "User account is inactive".to_string(),
+            ));
+        }
+
+        // Verify password
+        if !Self::verify_password(password, &user.password_hash)? {
+            return Err(ServiceError::validation(
+                "Invalid username or password".to_string(),
+            ));
+        }
+
         Ok(user)
     }
 
