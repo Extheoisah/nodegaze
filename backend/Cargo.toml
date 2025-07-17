@@ -11,14 +11,23 @@ log.workspace = true
 expanduser = "1.2.2"
 tokio.workspace = true
 lightning.workspace = true
-tonic_lnd = { package="fedimint-tonic-lnd", version="0.1.2", features=["lightningrpc", "routerrpc"] }
+tonic_lnd = { package = "fedimint-tonic-lnd", version = "0.1.2", features = [
+    "lightningrpc",
+    "routerrpc",
+] }
 tonic = { version = "0.8", features = ["tls", "transport"] }
 cln-grpc.workspace = true
 axum = { version = "0.8.4", features = ["macros"] }
 tower = "0.5.2"
 tracing.workspace = true
 serde_json.workspace = true
-sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid", "migrate"] }
+sqlx = { version = "0.8.6", features = [
+    "runtime-tokio-rustls",
+    "sqlite",
+    "chrono",
+    "uuid",
+    "migrate",
+] }
 anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
@@ -26,7 +35,8 @@ dotenvy = "0.15"
 validator = { version = "0.20.0", features = ["derive"] }
 aes-gcm = "0.10"
 base64 = "0.22"
-rand = "0.9.1"
+rand = { version = "0.8", features = ["std"] }
 bcrypt = "0.17"
 async-trait.workspace = true
-
+jsonwebtoken = "9.2"
+tracing-subscriber = "0.3"

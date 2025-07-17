@@ -1,10 +1,10 @@
 //! Database repository for credential management operations.
 //!
 //! Provides CRUD operations for node credentials.
-use crate::database::models::{Credential, CreateCredential};
+use crate::database::models::{CreateCredential, Credential};
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
-use chrono::{DateTime,Utc};
 use uuid::Uuid;
 
 /// Repository for credential database operations.
@@ -43,9 +43,9 @@ impl<'a> CredentialRepository<'a> {
         let credential = sqlx::query_as!(
             Credential,
             r#"
-            INSERT INTO credentials (user_id, account_id, node_id, node_alias, macaroon, tls_cert, address, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            RETURNING 
+            INSERT INTO credentials (user_id, account_id, node_id, node_alias, macaroon, tls_cert, address, node_type, client_cert, client_key, ca_cert, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING
             id as "id!",
             user_id as "user_id!",
             account_id as "account_id!",
@@ -54,6 +54,10 @@ impl<'a> CredentialRepository<'a> {
             macaroon as "macaroon!",
             tls_cert as "tls_cert!",
             address as "address!",
+            node_type as "node_type?",
+            client_cert as "client_cert?",
+            client_key as "client_key?",
+            ca_cert as "ca_cert?",
             is_active as "is_active!",
             created_at as "created_at!: DateTime<Utc>",
             updated_at as "updated_at!: DateTime<Utc>",
@@ -62,11 +66,15 @@ impl<'a> CredentialRepository<'a> {
             "#,
             credential.user_id,
             credential.account_id,
-            credential.node_id, 
+            credential.node_id,
             credential.node_alias,
             credential.macaroon,
             credential.tls_cert,
             credential.address,
+            credential.node_type,
+            credential.client_cert,
+            credential.client_key,
+            credential.ca_cert,
             true
         )
         .fetch_one(self.pool)
@@ -90,22 +98,26 @@ impl<'a> CredentialRepository<'a> {
         let credential = sqlx::query_as!(
             Credential,
             r#"
-            SELECT 
-            id as "id!",
-            user_id as "user_id!",
-            account_id as "account_id!",
-            node_id as "node_id!",
-            node_alias as "node_alias!",
-            macaroon as "macaroon!",
-            tls_cert as "tls_cert!",
-            address as "address!",
-            is_active as "is_active!",
-            created_at as "created_at!: DateTime<Utc>",
-            updated_at as "updated_at!: DateTime<Utc>",
-            is_deleted as "is_deleted!",
-            deleted_at as "deleted_at?: DateTime<Utc>"
-            FROM credentials WHERE id = ? AND is_deleted = 0
-            "#,
+                SELECT
+                id as "id!",
+                user_id as "user_id!",
+                account_id as "account_id!",
+                node_id as "node_id!",
+                node_alias as "node_alias!",
+                macaroon as "macaroon!",
+                tls_cert as "tls_cert!",
+                address as "address!",
+                node_type as "node_type?",
+                client_cert as "client_cert?",
+                client_key as "client_key?",
+                ca_cert as "ca_cert?",
+                is_active as "is_active!",
+                created_at as "created_at!: DateTime<Utc>",
+                updated_at as "updated_at!: DateTime<Utc>",
+                is_deleted as "is_deleted!",
+                deleted_at as "deleted_at?: DateTime<Utc>"
+                FROM credentials WHERE id = ? AND is_deleted = 0
+                "#,
             id
         )
         .fetch_optional(self.pool)
@@ -125,22 +137,26 @@ impl<'a> CredentialRepository<'a> {
         let credential = sqlx::query_as!(
             Credential,
             r#"
-            SELECT 
-            id as "id!",
-            user_id as "user_id!",
-            account_id as "account_id!",
-            node_id as "node_id!",
-            node_alias as "node_alias!",
-            macaroon as "macaroon!",
-            tls_cert as "tls_cert!",
-            address as "address!",
-            is_active as "is_active!",
-            created_at as "created_at!: DateTime<Utc>",
-            updated_at as "updated_at!: DateTime<Utc>",
-            is_deleted as "is_deleted!",
-            deleted_at as "deleted_at?: DateTime<Utc>"
-            FROM credentials WHERE user_id = ? AND is_deleted = 0
-            "#,
+                SELECT
+                id as "id!",
+                user_id as "user_id!",
+                account_id as "account_id!",
+                node_id as "node_id!",
+                node_alias as "node_alias!",
+                macaroon as "macaroon!",
+                tls_cert as "tls_cert!",
+                address as "address!",
+                node_type as "node_type?",
+                client_cert as "client_cert?",
+                client_key as "client_key?",
+                ca_cert as "ca_cert?",
+                is_active as "is_active!",
+                created_at as "created_at!: DateTime<Utc>",
+                updated_at as "updated_at!: DateTime<Utc>",
+                is_deleted as "is_deleted!",
+                deleted_at as "deleted_at?: DateTime<Utc>"
+                FROM credentials WHERE user_id = ? AND is_deleted = 0
+                "#,
             user_id
         )
         .fetch_optional(self.pool)
@@ -161,22 +177,26 @@ impl<'a> CredentialRepository<'a> {
         let credentials = sqlx::query_as!(
             Credential,
             r#"
-            SELECT 
-            id as "id!",
-            user_id as "user_id!",
-            account_id as "account_id!",
-            node_id as "node_id!",
-            node_alias as "node_alias!",
-            macaroon as "macaroon!",
-            tls_cert as "tls_cert!",
-            address as "address!",
-            is_active as "is_active!",
-            created_at as "created_at!: DateTime<Utc>",
-            updated_at as "updated_at!: DateTime<Utc>",
-            is_deleted as "is_deleted!",
-            deleted_at as "deleted_at?: DateTime<Utc>"
-            FROM credentials WHERE is_deleted = 0
-            "#
+               SELECT
+               id as "id!",
+               user_id as "user_id!",
+               account_id as "account_id!",
+               node_id as "node_id!",
+               node_alias as "node_alias!",
+               macaroon as "macaroon!",
+               tls_cert as "tls_cert!",
+               address as "address!",
+               node_type as "node_type?",
+               client_cert as "client_cert?",
+               client_key as "client_key?",
+               ca_cert as "ca_cert?",
+               is_active as "is_active!",
+               created_at as "created_at!: DateTime<Utc>",
+               updated_at as "updated_at!: DateTime<Utc>",
+               is_deleted as "is_deleted!",
+               deleted_at as "deleted_at?: DateTime<Utc>"
+               FROM credentials WHERE is_deleted = 0
+               "#
         )
         .fetch_all(self.pool)
         .await?;

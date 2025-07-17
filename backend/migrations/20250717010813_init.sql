@@ -80,6 +80,10 @@ CREATE TABLE IF NOT EXISTS credentials (
     macaroon TEXT NOT NULL,
     tls_cert TEXT NOT NULL,
     address TEXT NOT NULL,
+    node_type TEXT DEFAULT 'lnd',
+    client_cert TEXT DEFAULT NULL,
+    client_key TEXT DEFAULT NULL,
+    ca_cert TEXT DEFAULT NULL,
     is_active BOOLEAN NOT NULL DEFAULT 1,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -91,6 +95,9 @@ CREATE TABLE IF NOT EXISTS credentials (
 
 CREATE INDEX idx_credentials_user_id ON credentials(user_id);
 CREATE INDEX idx_credentials_account_id ON credentials(account_id);
+CREATE INDEX idx_credentials_node_type ON credentials(node_type);
+
+CREATE UNIQUE INDEX idx_credentials_user_unique ON credentials(user_id) WHERE is_deleted = 0;
 
 CREATE TRIGGER credentials_updated_at
     AFTER UPDATE ON credentials
