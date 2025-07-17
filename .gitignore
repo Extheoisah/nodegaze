@@ -7,3 +7,4 @@ Cargo.lock
 *.db-shm
 *.db-wal
 *.cert
+notes.md
