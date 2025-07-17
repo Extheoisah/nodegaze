@@ -4,7 +4,7 @@
 //! token refresh), parse request data, validate input, and interact with the
 //! `auth::service` for core business logic.
 
-use crate::api::common::service_error_to_http;
+use crate::api::common::{ApiResponse, service_error_to_http};
 use crate::auth::models::*;
 use crate::auth::service::AuthService;
 use crate::repositories::credential_repository::CredentialRepository;
@@ -21,14 +21,17 @@ use sqlx::SqlitePool;
 pub async fn login(
     Extension(pool): Extension<SqlitePool>,
     Json(payload): Json<LoginRequest>,
-) -> Result<ResponseJson<LoginResponse>, (StatusCode, String)> {
+) -> Result<ResponseJson<ApiResponse<LoginResponse>>, (StatusCode, String)> {
     let auth_service = match AuthService::new(&pool) {
         Ok(service) => service,
         Err(error) => return Err(service_error_to_http(error)),
     };
 
     match auth_service.login(payload).await {
-        Ok(response) => Ok(ResponseJson(response)),
+        Ok(response) => Ok(ResponseJson(ApiResponse::success(
+            response,
+            "Login successful",
+        ))),
         Err(error) => Err(service_error_to_http(error)),
     }
 }
@@ -38,105 +41,29 @@ pub async fn login(
 pub async fn refresh_token(
     Extension(pool): Extension<SqlitePool>,
     Json(payload): Json<RefreshTokenRequest>,
-) -> Result<ResponseJson<RefreshTokenResponse>, (StatusCode, String)> {
+) -> Result<ResponseJson<ApiResponse<RefreshTokenResponse>>, (StatusCode, String)> {
     let auth_service = match AuthService::new(&pool) {
         Ok(service) => service,
         Err(error) => return Err(service_error_to_http(error)),
     };
 
     match auth_service.refresh_token(payload).await {
-        Ok(response) => Ok(ResponseJson(response)),
+        Ok(response) => Ok(ResponseJson(ApiResponse::success(
+            response,
+            "Token refreshed successfully",
+        ))),
         Err(error) => Err(service_error_to_http(error)),
     }
-}
-
-/// Handle node credentials storage request
-#[axum::debug_handler]
-pub async fn store_node_credentials(
-    Extension(pool): Extension<SqlitePool>,
-    Extension(claims): Extension<Claims>,
-    Json(payload): Json<StoreNodeCredentialsRequest>,
-) -> Result<ResponseJson<StoreNodeCredentialsResponse>, (StatusCode, String)> {
-    let auth_service = match AuthService::new(&pool) {
-        Ok(service) => service,
-        Err(error) => return Err(service_error_to_http(error)),
-    };
-
-    match auth_service.store_node_credentials(claims, payload).await {
-        Ok(response) => Ok(ResponseJson(response)),
-        Err(error) => Err(service_error_to_http(error)),
-    }
-}
-
-/// Handle node credentials revocation request
-#[axum::debug_handler]
-pub async fn revoke_node_credentials(
-    Extension(pool): Extension<SqlitePool>,
-    Extension(claims): Extension<Claims>,
-) -> Result<ResponseJson<RevokeNodeCredentialsResponse>, (StatusCode, String)> {
-    let credential_repo = CredentialRepository::new(&pool);
-
-    // Check if user has credentials to revoke
-    let credential = match credential_repo.get_credential_by_user_id(&claims.sub).await {
-        Ok(Some(cred)) => cred,
-        Ok(None) => {
-            return Err((
-                StatusCode::NOT_FOUND,
-                "No node credentials found".to_string(),
-            ));
-        }
-        Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
-    };
-
-    // Soft delete the credential
-    if let Err(e) = credential_repo.delete_credential(&credential.id).await {
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
-    }
-
-    // Generate new token without node credentials
-    let jwt_utils = match crate::utils::jwt::JwtUtils::new() {
-        Ok(utils) => utils,
-        Err(e) => {
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("JWT error: {}", e),
-            ));
-        }
-    };
-
-    let access_token = match jwt_utils.generate_token(
-        claims.sub,
-        claims.account_id,
-        claims.role,
-        None, // No node credentials
-    ) {
-        Ok(token) => token,
-        Err(e) => {
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Token generation failed: {}", e),
-            ));
-        }
-    };
-
-    let response = RevokeNodeCredentialsResponse {
-        access_token,
-        revoked: true,
-        expires_in: 24 * 60 * 60,
-    };
-
-    Ok(ResponseJson(response))
 }
 
 /// Handle logout request (client-side token invalidation)
 #[axum::debug_handler]
-pub async fn logout() -> Result<ResponseJson<serde_json::Value>, (StatusCode, String)> {
-    // For JWT tokens, logout is typically handled on the client side
-    // by removing the token from storage. The server can maintain a blacklist
-    // if we later need for enhanced security.
-    Ok(ResponseJson(serde_json::json!({
-        "message": "Logged out successfully"
-    })))
+pub async fn logout() -> Result<ResponseJson<ApiResponse<serde_json::Value>>, (StatusCode, String)>
+{
+    Ok(ResponseJson(ApiResponse::success(
+        serde_json::json!({ "logged_out": true }),
+        "Logged out successfully",
+    )))
 }
 
 /// Get current user information from token
@@ -144,7 +71,7 @@ pub async fn logout() -> Result<ResponseJson<serde_json::Value>, (StatusCode, St
 pub async fn me(
     Extension(pool): Extension<SqlitePool>,
     Extension(claims): Extension<Claims>,
-) -> Result<ResponseJson<UserInfo>, (StatusCode, String)> {
+) -> Result<ResponseJson<ApiResponse<UserInfo>>, (StatusCode, String)> {
     // Get user information from database using claims
     let user = match sqlx::query!(
         r#"
@@ -160,8 +87,20 @@ pub async fn me(
     .await
     {
         Ok(Some(user)) => user,
-        Ok(None) => return Err((StatusCode::NOT_FOUND, "User not found".to_string())),
-        Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+        Ok(None) => {
+            let error_response = ApiResponse::<()>::error("User not found", "not_found", None);
+            return Err((
+                StatusCode::NOT_FOUND,
+                serde_json::to_string(&error_response).unwrap(),
+            ));
+        }
+        Err(e) => {
+            let error_response = ApiResponse::<()>::error("Database error", "database_error", None);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                serde_json::to_string(&error_response).unwrap(),
+            ));
+        }
     };
 
     let user_info = UserInfo {
@@ -174,5 +113,88 @@ pub async fn me(
         has_node_credentials: claims.has_node_credentials(),
     };
 
-    Ok(ResponseJson(user_info))
+    Ok(ResponseJson(ApiResponse::success(
+        user_info,
+        "User information retrieved successfully",
+    )))
+}
+
+/// Handle node credentials revocation request
+#[axum::debug_handler]
+pub async fn revoke_node_credentials(
+    Extension(pool): Extension<SqlitePool>,
+    Extension(claims): Extension<Claims>,
+) -> Result<ResponseJson<ApiResponse<RevokeNodeCredentialsResponse>>, (StatusCode, String)> {
+    let credential_repo = CredentialRepository::new(&pool);
+
+    // Check if user has credentials to revoke
+    let credential = match credential_repo.get_credential_by_user_id(&claims.sub).await {
+        Ok(Some(cred)) => cred,
+        Ok(None) => {
+            let error_response =
+                ApiResponse::<()>::error("No node credentials found", "not_found", None);
+            return Err((
+                StatusCode::NOT_FOUND,
+                serde_json::to_string(&error_response).unwrap(),
+            ));
+        }
+        Err(e) => {
+            let error_response = ApiResponse::<()>::error("Database error", "database_error", None);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                serde_json::to_string(&error_response).unwrap(),
+            ));
+        }
+    };
+
+    // Soft delete the credential
+    if let Err(e) = credential_repo.delete_credential(&credential.id).await {
+        let error_response =
+            ApiResponse::<()>::error("Failed to revoke credentials", "database_error", None);
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::to_string(&error_response).unwrap(),
+        ));
+    }
+
+    // Generate new token without node credentials
+    let jwt_utils = match crate::utils::jwt::JwtUtils::new() {
+        Ok(utils) => utils,
+        Err(e) => {
+            let error_response =
+                ApiResponse::<()>::error("JWT configuration error", "configuration_error", None);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                serde_json::to_string(&error_response).unwrap(),
+            ));
+        }
+    };
+
+    let access_token = match jwt_utils.generate_token(
+        claims.sub,
+        claims.account_id,
+        claims.role,
+        None, // No node credentials
+    ) {
+        Ok(token) => token,
+        Err(e) => {
+            let error_response =
+                ApiResponse::<()>::error("Token generation failed", "token_error", None);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                serde_json::to_string(&error_response).unwrap(),
+            ));
+        }
+    };
+
+    let response = RevokeNodeCredentialsResponse {
+        access_token,
+        revoked: true,
+        expires_in: 24 * 60 * 60,
+    };
+
+    Ok(ResponseJson(ApiResponse::success(
+        response,
+        "Node credentials revoked successfully",
+    )))
 }

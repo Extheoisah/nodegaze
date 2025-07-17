@@ -1,6 +1,5 @@
 //! Handler functions for the node observability API.
-
-use crate::config::Config;
+use crate::api::common::ApiResponse;
 use crate::database::models::CreateCredential;
 use crate::errors::LightningError;
 use crate::repositories::credential_repository::CredentialRepository;
@@ -29,7 +28,7 @@ pub async fn authenticate_node(
     Extension(pool): Extension<SqlitePool>,
     Extension(claims): Extension<Option<Claims>>,
     Json(payload): Json<ConnectionRequest>,
-) -> Result<Json<NodeAuthResponse>, (StatusCode, String)> {
+) -> Result<Json<ApiResponse<NodeAuthResponse>>, (StatusCode, String)> {
     // First authenticate with the node
     let node_info = match &payload {
         ConnectionRequest::Lnd(lnd_conn) => {
@@ -41,9 +40,14 @@ pub async fn authenticate_node(
                 }
                 Err(e) => {
                     tracing::error!("Failed to authenticate LND node: {}", e);
+                    let error_response = ApiResponse::<()>::error(
+                        format!("LND authentication failed: {}", e),
+                        "node_authentication_error",
+                        None,
+                    );
                     return Err((
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("LND authentication failed: {}", e),
+                        serde_json::to_string(&error_response).unwrap(),
                     ));
                 }
             }
@@ -57,9 +61,14 @@ pub async fn authenticate_node(
                 }
                 Err(e) => {
                     tracing::error!("Failed to authenticate CLN node: {}", e);
+                    let error_response = ApiResponse::<()>::error(
+                        format!("CLN authentication failed: {}", e),
+                        "node_authentication_error",
+                        None,
+                    );
                     return Err((
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("CLN authentication failed: {}", e),
+                        serde_json::to_string(&error_response).unwrap(),
                     ));
                 }
             }
@@ -75,21 +84,27 @@ pub async fn authenticate_node(
             }
             Err(e) => {
                 tracing::warn!("Failed to store credentials: {}", e);
-                // Don't fail the authentication, just log the warning
                 (false, None)
             }
         }
     } else {
-        // No user authentication, just return node info
         tracing::info!("No JWT token provided, skipping credential storage");
         (false, None)
     };
 
-    Ok(Json(NodeAuthResponse {
+    let response_data = NodeAuthResponse {
         node_info,
         credential_stored,
         credential_id,
-    }))
+    };
+
+    let message = if credential_stored {
+        "Node authenticated and credentials stored successfully"
+    } else {
+        "Node authenticated successfully"
+    };
+
+    Ok(Json(ApiResponse::success(response_data, message)))
 }
 
 /// Helper function to store node credentials in database

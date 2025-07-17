@@ -13,6 +13,7 @@ mod repositories;
 mod services;
 mod utils;
 
+use crate::api::common::ApiResponse;
 use axum::{Extension, Router, response::Json, routing::get};
 use config::Config;
 use database::Database;
@@ -42,6 +43,12 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn root_handler() -> Json<Value> {
-    Json(json!({ "message": "Welcome to  NodeGaze" }))
+async fn root_handler() -> Json<ApiResponse<serde_json::Value>> {
+    Json(ApiResponse::success(
+        serde_json::json!({
+            "service": "NodeGaze Backend",
+            "version": "0.1.0"
+        }),
+        "Welcome to NodeGaze API",
+    ))
 }

@@ -21,15 +21,31 @@ use crate::errors::ServiceError;
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 
-/// Standard error response format for all API endpoints
+/// Standard API response wrapper for all endpoints
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ErrorResponse {
-    /// Human-readable error message
-    pub error: String,
-    /// Field-specific validation errors when applicable
-    pub details: Option<Vec<FieldError>>,
+pub struct ApiResponse<T> {
+    /// Indicates if the request was successful
+    pub success: bool,
+    /// Response data (present on success)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<T>,
+    /// Human-readable message
+    pub message: String,
+    /// Error details (present on failure)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<ErrorDetails>,
+    /// Request timestamp
+    pub timestamp: String,
+}
+
+/// Error details for failed requests
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ErrorDetails {
     /// Machine-readable error type identifier
     pub error_type: String,
+    /// Field-specific validation errors when applicable
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<Vec<FieldError>>,
 }
 
 /// Field-specific validation error details
@@ -41,12 +57,43 @@ pub struct FieldError {
     pub message: String,
 }
 
-/// Converts ServiceError to appropriate HTTP response
-///
-/// Maps service layer errors to:
-/// - HTTP status codes
-/// - Standardized error response format
-/// - Proper error categorization
+impl<T> ApiResponse<T> {
+    /// Create a successful response
+    pub fn success(data: T, message: impl Into<String>) -> Self {
+        Self {
+            success: true,
+            data: Some(data),
+            message: message.into(),
+            error: None,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+
+    /// Create a successful response with default message
+    pub fn ok(data: T) -> Self {
+        Self::success(data, "Request successful")
+    }
+
+    /// Create an error response
+    pub fn error(
+        message: impl Into<String>,
+        error_type: impl Into<String>,
+        details: Option<Vec<FieldError>>,
+    ) -> ApiResponse<()> {
+        ApiResponse {
+            success: false,
+            data: None,
+            message: message.into(),
+            error: Some(ErrorDetails {
+                error_type: error_type.into(),
+                details,
+            }),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+}
+
+/// Converts ServiceError to appropriate HTTP response with standard format
 pub fn service_error_to_http(error: ServiceError) -> (StatusCode, String) {
     let (status, error_type, message) = match error {
         ServiceError::Validation { message } => {
@@ -81,19 +128,11 @@ pub fn service_error_to_http(error: ServiceError) -> (StatusCode, String) {
         }
     };
 
-    let error_response = ErrorResponse {
-        error: message,
-        details: None,
-        error_type: error_type.to_string(),
-    };
-
+    let error_response = ApiResponse::<()>::error(message, error_type, None);
     (status, serde_json::to_string(&error_response).unwrap())
 }
 
 /// Formats validator::ValidationErrors into field-specific error details
-///
-/// Transforms validation framework errors into our standard
-/// field error format for API responses.
 pub fn validation_errors_to_field_errors(errors: validator::ValidationErrors) -> Vec<FieldError> {
     errors
         .field_errors()
@@ -109,4 +148,15 @@ pub fn validation_errors_to_field_errors(errors: validator::ValidationErrors) ->
             })
         })
         .collect()
+}
+
+/// Helper to create validation error response
+pub fn validation_error_response(errors: validator::ValidationErrors) -> (StatusCode, String) {
+    let field_errors = validation_errors_to_field_errors(errors);
+    let error_response =
+        ApiResponse::<()>::error("Validation failed", "validation_error", Some(field_errors));
+    (
+        StatusCode::BAD_REQUEST,
+        serde_json::to_string(&error_response).unwrap(),
+    )
 }
