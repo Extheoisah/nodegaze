@@ -448,6 +448,7 @@ impl LightningClient for LndNode {
                     Ok(invoice) => {
                         let event_opt = match invoice.state() {
                             InvoiceState::Open => {
+                                tracing::info!("invoice created --> Payment Hash - {:?}", invoice.r_hash);
                                 Some(NodeSpecificEvent::LND(LNDEvent::InvoiceCreated {
                                         preimage: invoice.r_preimage,
                                         hash: invoice.r_hash,
