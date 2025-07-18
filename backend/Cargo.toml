@@ -3,6 +3,7 @@ name = "backend"
 version = "0.1.0"
 edition = "2024"
 
+[patch.crates-io]
 [dependencies]
 bitcoin.workspace = true
 serde.workspace = true
@@ -38,5 +39,9 @@ base64 = "0.22"
 rand = { version = "0.8", features = ["std"] }
 bcrypt = "0.17"
 async-trait.workspace = true
-jsonwebtoken = "9.2"
+jsonwebtoken.workspace = true
 tracing-subscriber = "0.3"
+tokio-stream = "0.1.17"
+async-stream = "0.3.6"
+futures.workspace = true
+

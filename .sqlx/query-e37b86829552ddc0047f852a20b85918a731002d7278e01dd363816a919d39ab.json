@@ -1,0 +1,80 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO users (account_id, role_id, name, password_hash, email, is_active)\n            VALUES (?, ?, ?, ?, ?, ?)\n            RETURNING\n            id as \"id!\",\n            account_id as \"account_id!\",\n            role_id as \"role_id!\",\n            name as \"name!\",\n            password_hash as \"password_hash!\",\n            email as \"email!\",\n            is_active as \"is_active!\",\n            created_at as \"created_at!: DateTime<Utc>\",\n            updated_at as \"updated_at!: DateTime<Utc>\",\n            is_deleted as \"is_deleted!\",\n            deleted_at as \"deleted_at?: DateTime<Utc>\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "account_id!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "role_id!",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "name!",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "password_hash!",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "email!",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_active!",
+        "ordinal": 6,
+        "type_info": "Bool"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 7,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 8,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "is_deleted!",
+        "ordinal": 9,
+        "type_info": "Bool"
+      },
+      {
+        "name": "deleted_at?: DateTime<Utc>",
+        "ordinal": 10,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "e37b86829552ddc0047f852a20b85918a731002d7278e01dd363816a919d39ab"
+}

@@ -16,3 +16,5 @@ tracing = "0.1"
 bitcoin = { version = "0.32.6", features = ["serde"] }
 lightning = "0.0.123"
 cln-grpc = "0.1.3"
+futures = { version = "0.3.31" }
+jsonwebtoken = "9.2"

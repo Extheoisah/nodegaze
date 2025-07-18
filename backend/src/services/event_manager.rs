@@ -1,0 +1,130 @@
+//! Manages Events occuring on a lightning node.
+//! 
+//! This module collects, aggregates and dispatches events occuring on a lightning node
+//! in order to provide timely notifications for critical events.
+
+use std::collections::HashMap;
+
+use bitcoin::secp256k1::PublicKey;
+use chrono::{DateTime, Utc};
+use serde::{Serialize, Deserialize};
+use tokio;
+use tokio::{sync::{mpsc, Mutex}};
+use tokio_stream::StreamExt;
+use crate::services::node_manager::LightningClient;
+use std::sync::Arc;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum LNDEvent {
+    ChannelOpened { 
+        channel_id: u64,
+        counterparty_node_id: String,
+    },
+    ChannelClosed { 
+        channel_id: u64,
+        counterparty_node_id: String,
+    },
+    InvoiceCreated { 
+        preimage: Vec<u8>,
+        hash: Vec<u8>,
+        value_msat: i64,
+        state: i32,
+        memo: String,
+        creation_date: i64,
+    },
+    InvoiceSettled { 
+        preimage: Vec<u8>,
+        hash: Vec<u8>,
+        value_msat: i64,
+        state: i32,
+        memo: String,
+        creation_date: i64,
+    },
+    InvoiceCancelled { 
+        preimage: Vec<u8>,
+        hash: Vec<u8>,
+        value_msat: i64,
+        state: i32,
+        memo: String,
+        creation_date: i64,
+    },
+    InvoiceAccepted { 
+        preimage: Vec<u8>,
+        hash: Vec<u8>,
+        value_msat: i64,
+        state: i32,
+        memo: String,
+        creation_date: i64,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CLNEvent {
+    ChannelOpened { },
+    ChannelClosed { },
+    InvoiceCreated { },
+    InvoiceSettled { },
+    InvoiceCancelled { },
+    InvoiceAccepted { },
+}
+
+pub enum NodeSpecificEvent {
+    LND(LNDEvent),
+    CLN(CLNEvent),
+}
+
+pub struct EventCollector {
+    raw_event_sender: mpsc::Sender<NodeSpecificEvent>,
+}
+
+impl EventCollector {
+    pub fn new(sender: mpsc::Sender<NodeSpecificEvent>) -> Self {
+        EventCollector { raw_event_sender: sender }
+    }
+
+    pub async fn start_listening(
+        &self,
+        node_id: PublicKey,
+        ln_client: Arc<Mutex<Box<dyn LightningClient + Send + Sync>>>,
+    ) {
+        let sender = self.raw_event_sender.clone();
+        let node_id_for_task = node_id.clone();
+
+        tokio::spawn(async move {
+            let client_guard = ln_client.lock().await;
+            let mut event_stream = client_guard.stream_events().await;
+
+            while let Some(event) = event_stream.next().await {
+                if sender.send(event).await.is_err() {
+                    eprintln!("Failed to send event for node {}. Receiver likely dropped.", node_id_for_task);
+                    break;
+                }
+            }
+            println!("Event stream for node {} ended.", node_id_for_task);
+        });
+    }
+}
+
+pub struct EventProcessor {}
+
+pub struct EventDispatcher {}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum EventSeverity {
+    Info,
+    Warning,
+    Critical,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Event {
+    pub id: String,
+    pub timestamp: DateTime<Utc>,
+    pub event_type: String,
+    pub severity: EventSeverity,
+    pub node_id: String,
+    pub node_alias: Option<String>,
+    pub data: HashMap<String, serde_json::Value>,
+}
+
+
