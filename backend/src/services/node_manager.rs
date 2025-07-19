@@ -356,22 +356,25 @@ impl LightningClient for LndNode {
             .collect())
     }
 
-   async fn stream_events(&self) -> Pin<Box<dyn Stream<Item = NodeSpecificEvent> + Send>> {
-        let mut channel_event_stream = match self.client
+    async fn stream_events(&self) -> Pin<Box<dyn Stream<Item = NodeSpecificEvent> + Send>> {
+        let channel_event_stream = match self.client
             .lock()
             .await
             .lightning()
             .subscribe_channel_events(ChannelEventSubscription {})
             .await
         {
-            Ok(response) => response.into_inner(),
+            Ok(response) => {
+                println!("LND channel events subscription successful: {:?}", response);
+                response.into_inner()
+            },
             Err(e) => {
                 eprintln!("Error subscribing to LND channel events: {:?}", e);
                 return Box::pin(stream::empty());
             }
         };
 
-        let mut invoice_event_stream = match self.client
+        let invoice_event_stream = match self.client
             .lock()
             .await
             .lightning()
@@ -383,13 +386,13 @@ impl LightningClient for LndNode {
         {
             Ok(response) => response.into_inner(),
             Err(e) => {
-                eprintln!("Error subscribing to LND channel events: {:?}", e);
+                eprintln!("Error subscribing to LND invoice events: {:?}", e);
                 return Box::pin(stream::empty());
             }
         };
 
         let event_stream = async_stream::stream! {
-            while let Some(result) = channel_event_stream.next().await {
+            let channel_events = channel_event_stream.filter_map(|result| { 
                 match result {
                     Ok(update) => {
                         let event_opt = match update.r#type() {
@@ -432,18 +435,16 @@ impl LightningClient for LndNode {
                             _ => None,
                         };
 
-                        if let Some(event) = event_opt {
-                            yield event;
-                        }
+                       event_opt
                     }
                     Err(e) => {
-                        eprintln!("Error receiving LND event: {:?}", e);
-                        break;
+                        eprintln!("Error receiving LND channel event: {:?}", e);
+                        None
                     }
                 }
-            }
+            });
 
-            while let Some(result) = invoice_event_stream.next().await {
+            let invoice_events = invoice_event_stream.filter_map(|result| {
                 match result {
                     Ok(invoice) => {
                         let event_opt = match invoice.state() {
@@ -490,15 +491,19 @@ impl LightningClient for LndNode {
                             }
                         };
 
-                        if let Some(event) = event_opt {
-                            yield event;
-                        }
+                        event_opt
                     },
                     Err(e) => {
                         eprintln!("Error receiving LND event: {:?}", e);
-                        break;
+                        None
                     }
-                };
+                }
+            });
+
+            let mut merged_stream = stream::select(channel_events, invoice_events);
+
+            while let Some(event) = merged_stream.next().await {
+                yield event;
             }
         };
 

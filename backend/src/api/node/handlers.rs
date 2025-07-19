@@ -7,7 +7,7 @@ use crate::services::node_manager::LightningClient;
 use crate::services::node_manager::{
     ClnConnection, ClnNode, ConnectionRequest, LndConnection, LndNode,
 };
-use crate::services::event_manager::{NodeSpecificEvent, EventCollector,};
+use crate::services::event_manager::{EventCollector, EventProcessor, NodeSpecificEvent};
 use crate::utils::jwt::Claims;
 use crate::utils::{NodeId, NodeInfo};
 use axum::{
@@ -43,13 +43,15 @@ pub async fn authenticate_node(
 
                     let info = lnd_node.info.clone();
 
-                    let (sender, _receiver) = mpsc::channel::<NodeSpecificEvent>(32);    
+                    let (sender, receiver) = mpsc::channel::<NodeSpecificEvent>(32);    
 
                     let collector = EventCollector::new(sender);
-                    let ln_client: Arc<Mutex<Box<dyn LightningClient  + Send + Sync + 'static>>> = Arc::new(Mutex::new(Box::new(lnd_node)));
+                    let ln_client: Arc<Mutex<Box<dyn LightningClient  + Send + Sync + 'static>>>  = Arc::new(Mutex::new(Box::new(lnd_node)));
 
-                    collector.start_listening(info.pubkey, ln_client).await;
-                    tracing::info!("Listening for Events on Node wih pubkey --> {}", info.pubkey);
+                    collector.start_sending(info.pubkey, ln_client).await;
+
+                    let processor = EventProcessor::new();
+                    processor.start_receiving(receiver);
 
                     info
                 },

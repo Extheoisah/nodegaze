@@ -11,8 +11,10 @@ use serde::{Serialize, Deserialize};
 use tokio;
 use tokio::{sync::{mpsc, Mutex}};
 use tokio_stream::StreamExt;
-use crate::services::node_manager::LightningClient;
+use tokio_stream::Stream;
+use std::pin::Pin;
 use std::sync::Arc;
+use crate::services::node_manager::LightningClient;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LNDEvent {
@@ -68,6 +70,7 @@ pub enum CLNEvent {
     InvoiceAccepted { },
 }
 
+#[derive(Debug)]
 pub enum NodeSpecificEvent {
     LND(LNDEvent),
     CLN(CLNEvent),
@@ -82,17 +85,17 @@ impl EventCollector {
         EventCollector { raw_event_sender: sender }
     }
 
-    pub async fn start_listening(
+    pub async fn start_sending(
         &self,
         node_id: PublicKey,
-        ln_client: Arc<Mutex<Box<dyn LightningClient + Send + Sync>>>,
+        ln_client: Arc<Mutex<Box<dyn LightningClient  + Send + Sync + 'static>>>,
     ) {
         let sender = self.raw_event_sender.clone();
         let node_id_for_task = node_id.clone();
 
         tokio::spawn(async move {
             let client_guard = ln_client.lock().await;
-            let mut event_stream = client_guard.stream_events().await;
+            let mut event_stream: Pin<Box<dyn Stream<Item = NodeSpecificEvent> + std::marker::Send>> = client_guard.stream_events().await;
 
             while let Some(event) = event_stream.next().await {
                 if sender.send(event).await.is_err() {
@@ -106,6 +109,21 @@ impl EventCollector {
 }
 
 pub struct EventProcessor {}
+
+impl EventProcessor {
+    pub fn new() -> Self {
+        EventProcessor { }
+    }
+
+    pub fn start_receiving(&self, mut receiver: mpsc::Receiver<NodeSpecificEvent>) {
+        tokio::spawn(async move {
+            while let Some(event) = receiver.recv().await {
+                println!("Received event: {:?}", event);
+            }
+            println!("Receiver task for channel ended.");
+        });
+    }
+}
 
 pub struct EventDispatcher {}
 
