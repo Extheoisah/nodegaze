@@ -69,7 +69,7 @@ pub struct CreateNewAccount {
 pub struct User {
     pub id: String,
     pub account_id: String,
-    pub name: String,
+    pub username: String,
     pub password_hash: String,
     pub email: String,
     pub role_id: String,
@@ -88,8 +88,12 @@ pub struct CreateNewUser {
     #[validate(length(min = 1, message = "Role ID is required"))]
     pub role_id: String,
 
-    #[validate(length(min = 1, max = 255, message = "Name must be between 1-255 characters"))]
-    pub name: String,
+    #[validate(length(
+        min = 1,
+        max = 255,
+        message = "Username must be between 1-255 characters"
+    ))]
+    pub username: String,
 
     // #[validate(
     //     email(message = "Must be a valid email"),
@@ -109,8 +113,12 @@ pub struct CreateUser {
     #[validate(length(min = 1, message = "Role ID is required"))]
     pub role_id: String,
 
-    #[validate(length(min = 1, max = 255, message = "Name must be between 1-255 characters"))]
-    pub name: String,
+    #[validate(length(
+        min = 1,
+        max = 255,
+        message = "Username must be between 1-255 characters"
+    ))]
+    pub username: String,
 
     #[validate(
         email(message = "Must be a valid email"),
@@ -200,6 +208,97 @@ fn validate_socket_address(address: &str) -> Result<(), validator::ValidationErr
         ));
     }
     Ok(())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Invite {
+    pub id: String,
+    pub account_id: String,
+    pub inviter_id: String,
+    pub invitee_email: String,
+    pub token: String,
+    pub invite_status: InviteStatus,
+    pub is_active: bool,
+    pub expires_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub is_deleted: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, PartialEq)]
+#[sqlx(type_name = "TEXT")] // Store as TEXT in SQLite
+pub enum InviteStatus {
+    Pending = 1,
+    Accepted = 2,
+}
+
+impl std::fmt::Display for InviteStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InviteStatus::Pending => write!(f, "Pending"),
+            InviteStatus::Accepted => write!(f, "Accepted"),
+        }
+    }
+}
+
+impl std::str::FromStr for InviteStatus {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Pending" => Ok(InviteStatus::Pending),
+            "Accepted" => Ok(InviteStatus::Accepted),
+            _ => Err(format!("Invalid invite status: {}", s)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+pub struct CreateInvite {
+    #[validate(length(min = 1, message = "Account ID is required"))]
+    pub account_id: String,
+    #[validate(length(min = 1, message = "Inviter ID is required"))]
+    pub inviter_id: String,
+    #[validate(email(message = "Must be a valid email"))]
+    pub invitee_email: String,
+    #[validate(length(min = 1, message = "Token is required"))]
+    pub token: String,
+    #[validate(custom(function = "validate_expiry_time"))]
+    pub expires_at: DateTime<Utc>,
+    pub invite_status: InviteStatus,
+}
+
+/// Validates that the expiry time is in the future
+fn validate_expiry_time(expires_at: &DateTime<Utc>) -> Result<(), validator::ValidationError> {
+    if expires_at <= &Utc::now() {
+        return Err(validator::ValidationError::new(
+            "expires_at must be in the future",
+        ));
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+pub struct CreateInviteRequest {
+    #[validate(
+        email(message = "Must be a valid email"),
+        length(max = 255, message = "Email too long")
+    )]
+    pub email: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+pub struct AcceptInviteRequest {
+    #[validate(length(min = 1, message = "Token is required"))]
+    pub token: String,
+    #[validate(length(
+        min = 1,
+        max = 255,
+        message = "Username must be between 1-255 characters"
+    ))]
+    pub username: String,
+    #[validate(length(min = 1, message = "Password is required"))]
+    pub password: String,
 }
 
 // View models for API responses (with joined data)

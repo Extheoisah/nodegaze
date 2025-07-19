@@ -62,10 +62,10 @@ impl<'a> UserService<'a> {
         let repo = UserRepository::new(self.pool);
 
         // Check if username already exists globally
-        if repo.username_exists(&create_user.name).await? {
+        if repo.username_exists(&create_user.username).await? {
             return Err(ServiceError::already_exists(
                 "User with username",
-                &create_user.name,
+                &create_user.username,
             ));
         }
 
@@ -114,16 +114,16 @@ impl<'a> UserService<'a> {
         self.validate_business_rules(&create_user)?;
 
         // Hash the password with proper error handling
-        let password_hash = Self::hash_password(&create_user.password)?;
+        let password_hash = self.hash_password(&create_user.password)?;
 
         // Store values before moving them into CreateUser
-        let name = create_user.name.clone();
+        let name = create_user.username.clone();
         let email = create_user.email.clone();
 
         let data = CreateUser {
             account_id: create_user.account_id,
             role_id: create_user.role_id,
-            name: create_user.name,
+            username: create_user.username,
             email: create_user.email,
             password_hash,
         };
@@ -153,7 +153,7 @@ impl<'a> UserService<'a> {
     ///
     /// # Errors
     /// Returns `ServiceError` if hashing fails
-    fn hash_password(password: &str) -> ServiceResult<String> {
+    fn hash_password(&self, password: &str) -> ServiceResult<String> {
         hash(password, DEFAULT_COST)
             .map_err(|e| ServiceError::validation(format!("Password hashing failed: {}", e)))
     }
@@ -169,7 +169,7 @@ impl<'a> UserService<'a> {
     ///
     /// # Errors
     /// Returns `ServiceError` if verification process fails
-    fn verify_password(password: &str, hash: &str) -> ServiceResult<bool> {
+    fn verify_password(&self, password: &str, hash: &str) -> ServiceResult<bool> {
         verify(password, hash)
             .map_err(|e| ServiceError::validation(format!("Password verification failed: {}", e)))
     }
@@ -224,7 +224,7 @@ impl<'a> UserService<'a> {
         }
 
         // Verify password
-        if !Self::verify_password(password, &user.password_hash)? {
+        if !self.verify_password(password, &user.password_hash)? {
             return Err(ServiceError::validation(
                 "Invalid username or password".to_string(),
             ));
@@ -235,9 +235,9 @@ impl<'a> UserService<'a> {
 
     /// Business validation rules.
     fn validate_business_rules(&self, create_user: &CreateNewUser) -> ServiceResult<()> {
-        // Validate name doesn't start with numbers or special characters
+        // Validate username doesn't start with numbers or special characters
         if create_user
-            .name
+            .username
             .chars()
             .next()
             .map_or(false, |c| c.is_numeric() || !c.is_alphanumeric())

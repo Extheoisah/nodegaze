@@ -156,13 +156,13 @@ impl<'a> AccountService<'a> {
         let user = sqlx::query_as!(
             crate::database::models::User,
             r#"
-            INSERT INTO users (account_id, role_id, name, password_hash, email, is_active)
+            INSERT INTO users (account_id, role_id, username, password_hash, email, is_active)
             VALUES (?, ?, ?, ?, ?, ?)
             RETURNING
             id as "id!",
             account_id as "account_id!",
             role_id as "role_id!",
-            name as "name!",
+            username as "username!",
             password_hash as "password_hash!",
             email as "email!",
             is_active as "is_active!",
@@ -182,7 +182,7 @@ impl<'a> AccountService<'a> {
         .await
         .map_err(|e| {
             let error_msg = e.to_string();
-            if error_msg.contains("UNIQUE constraint failed: users.name") {
+            if error_msg.contains("UNIQUE constraint failed: users.username") {
                 ServiceError::already_exists("User with username", &create_account.username)
             } else if error_msg.contains("UNIQUE constraint failed: users.email") {
                 ServiceError::already_exists("User with email", &create_account.email)

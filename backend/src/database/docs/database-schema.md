@@ -19,7 +19,7 @@ erDiagram
     USER {
         string id PK
         string account_id FK
-        string name
+        string username
         string password_hash
         string email
         string role_id FK

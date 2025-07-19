@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT \n            id as \"id!\",\n            account_id as \"account_id!\",\n            inviter_id as \"inviter_id!\",\n            invitee_email as \"invitee_email!\",\n            token as \"token!\",\n            invite_status as \"invite_status: InviteStatus\",\n            is_active as \"is_active!\",\n            created_at as \"created_at!: DateTime<Utc>\",\n            expires_at as \"expires_at!: DateTime<Utc>\",\n            updated_at as \"updated_at!: DateTime<Utc>\",\n            is_deleted as \"is_deleted!\",\n            deleted_at as \"deleted_at?: DateTime<Utc>\"\n            FROM invites WHERE invitee_email = ? AND account_id = ? AND is_deleted = 0\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "account_id!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "inviter_id!",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "invitee_email!",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "token!",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "invite_status: InviteStatus",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "is_active!",
+        "ordinal": 6,
+        "type_info": "Bool"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 7,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "expires_at!: DateTime<Utc>",
+        "ordinal": 8,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 9,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "is_deleted!",
+        "ordinal": 10,
+        "type_info": "Bool"
+      },
+      {
+        "name": "deleted_at?: DateTime<Utc>",
+        "ordinal": 11,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "9d73f591b115e2367dfc978e80c4df95c77f8e4b6e2048e8c0bb993e2a8c6d06"
+}

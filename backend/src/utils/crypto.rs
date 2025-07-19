@@ -75,7 +75,7 @@ impl StringCrypto {
     /// Each encryption uses a unique nonce for security.
     pub fn encrypt(plaintext: &str) -> Result<String, CryptoError> {
         let cipher = Self::create_cipher()?;
-        
+
         // Generate random nonce
         let mut nonce_bytes = [0u8; 12];
         OsRng::default().fill_bytes(&mut nonce_bytes);
@@ -98,7 +98,7 @@ impl StringCrypto {
     /// Decrypt a base64 encoded string that was encrypted with `encrypt()`.
     pub fn decrypt(encrypted_data: &str) -> Result<String, CryptoError> {
         let cipher = Self::create_cipher()?;
-        
+
         // Decode base64
         let data = general_purpose::STANDARD
             .decode(encrypted_data)
@@ -133,28 +133,35 @@ pub fn generate_key() -> String {
 mod tests {
     use super::*;
     use std::env;
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use std::env;
 
-    #[test]
-    fn test_encrypt_decrypt() {
-        let original = "Test message";
+        #[test]
+        fn test_encrypt_decrypt() {
+            let original = "Test message";
 
-        let encrypted = StringCrypto::encrypt(original).unwrap();
-        let decrypted = StringCrypto::decrypt(&encrypted).unwrap();
+            let encrypted = StringCrypto::encrypt(original).unwrap();
+            let decrypted = StringCrypto::decrypt(&encrypted).unwrap();
 
-        assert_eq!(original, decrypted);
-    }
+            assert_eq!(original, decrypted);
+        }
 
-    #[test]
-    fn test_unique_nonces() {
-        let msg = "Same message";
-        let enc1 = StringCrypto::encrypt(msg).unwrap();
-        let enc2 = StringCrypto::encrypt(msg).unwrap();
+        #[test]
+        fn test_unique_nonces() {
+            let msg = "Same message";
+            let enc1 = StringCrypto::encrypt(msg).unwrap();
+            let enc2 = StringCrypto::encrypt(msg).unwrap();
 
-        // Same message should produce different ciphertext
-        assert_ne!(enc1, enc2);
+            // Same message should produce different ciphertext
+            assert_ne!(enc1, enc2);
+            // Same message should produce different ciphertext
+            assert_ne!(enc1, enc2);
 
-        // But both should decrypt correctly
-        assert_eq!(StringCrypto::decrypt(&enc1).unwrap(), msg);
-        assert_eq!(StringCrypto::decrypt(&enc2).unwrap(), msg);
+            // But both should decrypt correctly
+            assert_eq!(StringCrypto::decrypt(&enc1).unwrap(), msg);
+            assert_eq!(StringCrypto::decrypt(&enc2).unwrap(), msg);
+        }
     }
 }

@@ -8,7 +8,7 @@ use crate::services::node_manager::{
     ClnConnection, ClnNode, ConnectionRequest, LndConnection, LndNode,
 };
 use crate::utils::jwt::Claims;
-use crate::utils::{NodeId, NodeInfo};
+use crate::utils::{NodeId, NodeInfo, crypto::StringCrypto};
 use axum::{
     extract::{Extension, Json},
     http::StatusCode,
@@ -26,7 +26,7 @@ pub struct NodeAuthResponse {
 #[axum::debug_handler]
 pub async fn authenticate_node(
     Extension(pool): Extension<SqlitePool>,
-    Extension(claims): Extension<Option<Claims>>,
+    Extension(claims): Extension<Option<Claims>>, // This should now work
     Json(payload): Json<ConnectionRequest>,
 ) -> Result<Json<ApiResponse<NodeAuthResponse>>, (StatusCode, String)> {
     // First authenticate with the node
