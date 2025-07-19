@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT u.name, u.email, a.name as account_name, r.name as role_name\n        FROM users u\n        JOIN accounts a ON u.account_id = a.id\n        JOIN roles r ON u.role_id = r.id\n        WHERE u.id = ? AND u.is_deleted = 0\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "name",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "email",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "account_name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "role_name",
+        "ordinal": 3,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "b643f989f74ece478f166e0ef65abe42c41c9a45e4c234157044c08e13f8fc1b"
+}

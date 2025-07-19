@@ -9,3 +9,4 @@ pub mod credential_service;
 pub mod data_aggregator;
 pub mod node_manager;
 pub mod user_service;
+pub mod event_manager;
