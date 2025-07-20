@@ -24,7 +24,10 @@
 
 use crate::errors::ServiceError;
 use axum::http::StatusCode;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use std::fmt::Debug;
+use validator::Validate;
 
 /// Standard API response wrapper for all endpoints
 #[derive(Debug, Serialize, Deserialize)]
@@ -144,10 +147,7 @@ pub struct DateRangeFilter {
 
 /// Generic state filter that can work with any enum type
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct StateFilter<T>
-where
-    T: Debug + Clone + Serialize + DeserializeOwned,
-{
+pub struct StateFilter<T> {
     /// List of states to filter by (OR logic)
     pub states: Vec<T>,
 }
@@ -165,13 +165,14 @@ pub struct BaseFilter {
 
 /// Complete filter combining pagination and filtering options
 #[derive(Debug, Serialize, Deserialize, Validate)]
-pub struct FilterRequest<T>
-where
-    T: Debug + Clone + Serialize + DeserializeOwned,
+#[serde(bound = "T: Debug + Clone + Serialize + DeserializeOwned")]
+pub struct FilterRequest<T> 
+where 
+    T: Debug + Clone + Serialize + DeserializeOwned
 {
     /// Pagination parameters
     #[serde(flatten)]
-    #[validate]
+    #[validate(nested)]
     pub pagination: PaginationFilter,
     /// Base filtering options
     #[serde(flatten)]
@@ -473,84 +474,6 @@ pub fn validation_error_response(errors: validator::ValidationErrors) -> (Status
         StatusCode::BAD_REQUEST,
         serde_json::to_string(&error_response).unwrap(),
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_pagination_meta_calculation() {
-        // Test normal pagination
-        let meta = PaginationMeta::new(2, 10, 25);
-        assert_eq!(meta.current_page, 2);
-        assert_eq!(meta.per_page, 10);
-        assert_eq!(meta.total_items, 25);
-        assert_eq!(meta.total_pages, 3);
-        assert!(meta.has_next);
-        assert!(meta.has_prev);
-        assert_eq!(meta.next_page, Some(3));
-        assert_eq!(meta.prev_page, Some(1));
-
-        // Test first page
-        let meta = PaginationMeta::new(1, 10, 25);
-        assert!(!meta.has_prev);
-        assert!(meta.has_next);
-        assert_eq!(meta.prev_page, None);
-        assert_eq!(meta.next_page, Some(2));
-
-        // Test last page
-        let meta = PaginationMeta::new(3, 10, 25);
-        assert!(meta.has_prev);
-        assert!(!meta.has_next);
-        assert_eq!(meta.prev_page, Some(2));
-        assert_eq!(meta.next_page, None);
-
-        // Test empty result set
-        let meta = PaginationMeta::new(1, 10, 0);
-        assert_eq!(meta.total_pages, 1);
-        assert!(!meta.has_next);
-        assert!(!meta.has_prev);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_pagination_meta_calculation() {
-        // Test normal pagination
-        let meta = PaginationMeta::new(2, 10, 25);
-        assert_eq!(meta.current_page, 2);
-        assert_eq!(meta.per_page, 10);
-        assert_eq!(meta.total_items, 25);
-        assert_eq!(meta.total_pages, 3);
-        assert!(meta.has_next);
-        assert!(meta.has_prev);
-        assert_eq!(meta.next_page, Some(3));
-        assert_eq!(meta.prev_page, Some(1));
-
-        // Test first page
-        let meta = PaginationMeta::new(1, 10, 25);
-        assert!(!meta.has_prev);
-        assert!(meta.has_next);
-        assert_eq!(meta.prev_page, None);
-        assert_eq!(meta.next_page, Some(2));
-
-        // Test last page
-        let meta = PaginationMeta::new(3, 10, 25);
-        assert!(meta.has_prev);
-        assert!(!meta.has_next);
-        assert_eq!(meta.prev_page, Some(2));
-        assert_eq!(meta.next_page, None);
-
-        // Test empty result set
-        let meta = PaginationMeta::new(1, 10, 0);
-        assert_eq!(meta.total_pages, 1);
-        assert!(!meta.has_next);
-        assert!(!meta.has_prev);
-    }
 }
 
 #[cfg(test)]
