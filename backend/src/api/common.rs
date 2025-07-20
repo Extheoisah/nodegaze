@@ -6,6 +6,7 @@
 //! - ServiceError to HTTP status code mapping
 //! - Validation error formatting helpers
 //! - Pagination support for list endpoints
+//! - Flexible filtering system for different data types
 //!
 //! # Response Format
 //! All errors return consistent JSON responses containing:
@@ -23,7 +24,7 @@
 
 use crate::errors::ServiceError;
 use axum::http::StatusCode;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 /// Standard API response wrapper for all endpoints
 #[derive(Debug, Serialize, Deserialize)]
@@ -96,6 +97,90 @@ pub struct FieldError {
     pub message: String,
 }
 
+/// Pagination parameters for requests
+#[derive(Debug, Serialize, Deserialize, Validate)]
+pub struct PaginationFilter {
+    /// Page number (1-indexed)
+    #[validate(range(min = 1))]
+    pub page: Option<u32>,
+    /// Number of items per page
+    #[validate(range(min = 1, max = 100))]
+    pub per_page: Option<u32>,
+}
+
+// Numeric comparison operators for filtering
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum NumericOperator {
+    /// Greater than or equal to
+    Gte,
+    /// Less than or equal to
+    Lte,
+    /// Equal to
+    Eq,
+    /// Greater than
+    Gt,
+    /// Less than
+    Lt,
+}
+
+/// Capacity filter for numeric values
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CapacityFilter {
+    /// The comparison operator
+    pub operator: NumericOperator,
+    /// The value to compare against
+    pub value: i64,
+}
+
+/// Date range filter
+#[derive(Debug, Serialize, Deserialize, Clone, Validate)]
+pub struct DateRangeFilter {
+    /// Start date (inclusive)
+    pub from: Option<DateTime<Utc>>,
+    /// End date (inclusive)
+    pub to: Option<DateTime<Utc>>,
+}
+
+/// Generic state filter that can work with any enum type
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StateFilter<T>
+where
+    T: Debug + Clone + Serialize + DeserializeOwned,
+{
+    /// List of states to filter by (OR logic)
+    pub states: Vec<T>,
+}
+
+/// Base filter struct that other modules can extend
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BaseFilter {
+    /// Capacity-based filtering
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capacity: Option<CapacityFilter>,
+    /// Date range filtering
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub date_range: Option<DateRangeFilter>,
+}
+
+/// Complete filter combining pagination and filtering options
+#[derive(Debug, Serialize, Deserialize, Validate)]
+pub struct FilterRequest<T>
+where
+    T: Debug + Clone + Serialize + DeserializeOwned,
+{
+    /// Pagination parameters
+    #[serde(flatten)]
+    #[validate]
+    pub pagination: PaginationFilter,
+    /// Base filtering options
+    #[serde(flatten)]
+    pub base_filter: BaseFilter,
+    /// Module-specific state filtering
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<StateFilter<T>>,
+}
+
 impl PaginationMeta {
     /// Create pagination metadata from page parameters and total count
     pub fn new(current_page: u32, per_page: u32, total_items: u64) -> Self {
@@ -104,10 +189,10 @@ impl PaginationMeta {
         } else {
             ((total_items - 1) / per_page as u64 + 1) as u32
         };
-        
+
         let has_next = current_page < total_pages;
         let has_prev = current_page > 1;
-        
+
         Self {
             current_page,
             per_page,
@@ -115,8 +200,16 @@ impl PaginationMeta {
             total_pages,
             has_next,
             has_prev,
-            next_page: if has_next { Some(current_page + 1) } else { None },
-            prev_page: if has_prev { Some(current_page - 1) } else { None },
+            next_page: if has_next {
+                Some(current_page + 1)
+            } else {
+                None
+            },
+            prev_page: if has_prev {
+                Some(current_page - 1)
+            } else {
+                None
+            },
         }
     }
 }
@@ -147,11 +240,7 @@ impl<T> ApiResponse<T> {
     }
 
     /// Create a successful paginated response
-    pub fn paginated(
-        data: T,
-        pagination: PaginationMeta,
-        message: impl Into<String>,
-    ) -> Self {
+    pub fn paginated(data: T, pagination: PaginationMeta, message: impl Into<String>) -> Self {
         Self {
             success: true,
             data: Some(data),
@@ -184,6 +273,137 @@ impl<T> ApiResponse<T> {
             pagination: None,
             timestamp: chrono::Utc::now().to_rfc3339(),
         }
+    }
+}
+
+impl PaginationFilter {
+    /// Get page number with default
+    pub fn page(&self) -> u32 {
+        self.page.unwrap_or(1)
+    }
+
+    /// Get per_page with default
+    pub fn per_page(&self) -> u32 {
+        self.per_page.unwrap_or(20)
+    }
+
+    /// Calculate offset for database queries
+    pub fn offset(&self) -> u64 {
+        ((self.page() - 1) * self.per_page()) as u64
+    }
+
+    /// Get limit for database queries
+    pub fn limit(&self) -> u64 {
+        self.per_page() as u64
+    }
+}
+
+impl Default for PaginationFilter {
+    fn default() -> Self {
+        Self {
+            page: Some(1),
+            per_page: Some(20),
+        }
+    }
+}
+
+impl DateRangeFilter {
+    /// Create a new date range filter
+    pub fn new(from: Option<DateTime<Utc>>, to: Option<DateTime<Utc>>) -> Self {
+        Self { from, to }
+    }
+
+    /// Check if the filter has any constraints
+    pub fn is_empty(&self) -> bool {
+        self.from.is_none() && self.to.is_none()
+    }
+
+    /// Validate that from date is before to date
+    pub fn is_valid(&self) -> bool {
+        match (self.from, self.to) {
+            (Some(from), Some(to)) => from <= to,
+            _ => true,
+        }
+    }
+}
+
+impl<T> StateFilter<T>
+where
+    T: Debug + Clone + Serialize + DeserializeOwned,
+{
+    /// Create a new state filter
+    pub fn new(states: Vec<T>) -> Self {
+        Self { states }
+    }
+
+    /// Check if the filter has any states
+    pub fn is_empty(&self) -> bool {
+        self.states.is_empty()
+    }
+
+    /// Check if a given state matches any of the filter states
+    pub fn matches(&self, state: &T) -> bool
+    where
+        T: PartialEq,
+    {
+        self.states.contains(state)
+    }
+}
+
+impl BaseFilter {
+    /// Create a new empty base filter
+    pub fn new() -> Self {
+        Self {
+            capacity: None,
+            date_range: None,
+        }
+    }
+
+    /// Set capacity filter
+    pub fn with_capacity(mut self, capacity: CapacityFilter) -> Self {
+        self.capacity = Some(capacity);
+        self
+    }
+
+    /// Set date range filter
+    pub fn with_date_range(mut self, date_range: DateRangeFilter) -> Self {
+        self.date_range = Some(date_range);
+        self
+    }
+}
+
+impl Default for BaseFilter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T> FilterRequest<T>
+where
+    T: Debug + Clone + Serialize + DeserializeOwned,
+{
+    /// Create a new filter request
+    pub fn new() -> Self {
+        Self {
+            pagination: PaginationFilter::default(),
+            base_filter: BaseFilter::new(),
+            state: None,
+        }
+    }
+
+    /// Set state filter
+    pub fn with_state_filter(mut self, state_filter: StateFilter<T>) -> Self {
+        self.state = Some(state_filter);
+        self
+    }
+}
+
+impl<T> Default for FilterRequest<T>
+where
+    T: Debug + Clone + Serialize + DeserializeOwned,
+{
+    fn default() -> Self {
+        Self::new()
     }
 }
 

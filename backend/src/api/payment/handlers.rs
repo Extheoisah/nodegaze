@@ -26,6 +26,8 @@ pub async fn get_payments(
         )
     })?;
 
+    let user_id = claims.sub.as_str().to_string();
+
     tracing::info!("Getting all payments for user: {}", user_id);
 
     // Simulate fetching payments
@@ -70,6 +72,8 @@ pub async fn get_payment_by_id(
         )
     })?;
 
+    let user_id = claims.sub.as_str().to_string();
+
     tracing::info!("Getting payment by ID: {} for user: {}", id, user_id);
 
     // Simulate fetching a payment by ID
@@ -97,6 +101,8 @@ pub async fn export_payments(
             "No node credentials found in token. Please authenticate your node first.".to_string(),
         )
     })?;
+
+    let user_id = claims.sub.as_str().to_string();
 
     tracing::info!("Exporting payments for user: {}", user_id);
 
