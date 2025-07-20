@@ -513,3 +513,81 @@ mod tests {
         assert!(!meta.has_prev);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pagination_meta_calculation() {
+        // Test normal pagination
+        let meta = PaginationMeta::new(2, 10, 25);
+        assert_eq!(meta.current_page, 2);
+        assert_eq!(meta.per_page, 10);
+        assert_eq!(meta.total_items, 25);
+        assert_eq!(meta.total_pages, 3);
+        assert!(meta.has_next);
+        assert!(meta.has_prev);
+        assert_eq!(meta.next_page, Some(3));
+        assert_eq!(meta.prev_page, Some(1));
+
+        // Test first page
+        let meta = PaginationMeta::new(1, 10, 25);
+        assert!(!meta.has_prev);
+        assert!(meta.has_next);
+        assert_eq!(meta.prev_page, None);
+        assert_eq!(meta.next_page, Some(2));
+
+        // Test last page
+        let meta = PaginationMeta::new(3, 10, 25);
+        assert!(meta.has_prev);
+        assert!(!meta.has_next);
+        assert_eq!(meta.prev_page, Some(2));
+        assert_eq!(meta.next_page, None);
+
+        // Test empty result set
+        let meta = PaginationMeta::new(1, 10, 0);
+        assert_eq!(meta.total_pages, 1);
+        assert!(!meta.has_next);
+        assert!(!meta.has_prev);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pagination_meta_calculation() {
+        // Test normal pagination
+        let meta = PaginationMeta::new(2, 10, 25);
+        assert_eq!(meta.current_page, 2);
+        assert_eq!(meta.per_page, 10);
+        assert_eq!(meta.total_items, 25);
+        assert_eq!(meta.total_pages, 3);
+        assert!(meta.has_next);
+        assert!(meta.has_prev);
+        assert_eq!(meta.next_page, Some(3));
+        assert_eq!(meta.prev_page, Some(1));
+
+        // Test first page
+        let meta = PaginationMeta::new(1, 10, 25);
+        assert!(!meta.has_prev);
+        assert!(meta.has_next);
+        assert_eq!(meta.prev_page, None);
+        assert_eq!(meta.next_page, Some(2));
+
+        // Test last page
+        let meta = PaginationMeta::new(3, 10, 25);
+        assert!(meta.has_prev);
+        assert!(!meta.has_next);
+        assert_eq!(meta.prev_page, Some(2));
+        assert_eq!(meta.next_page, None);
+
+        // Test empty result set
+        let meta = PaginationMeta::new(1, 10, 0);
+        assert_eq!(meta.total_pages, 1);
+        assert!(!meta.has_next);
+        assert!(!meta.has_prev);
+    }
+}
