@@ -270,7 +270,7 @@ pub trait LightningClient: Send {
     async fn list_channels(&self) -> Result<Vec<u64>, LightningError>;
     /// Returns a stream of raw events from the lightning node.
     async fn stream_events(
-        &self,
+        &mut self,
     ) -> Pin<Box<dyn Stream<Item = NodeSpecificEvent> + Send>>;
 }
 
@@ -356,10 +356,14 @@ impl LightningClient for LndNode {
             .collect())
     }
 
-    async fn stream_events(&self) -> Pin<Box<dyn Stream<Item = NodeSpecificEvent> + Send>> {
-        let channel_event_stream = match self.client
-            .lock()
-            .await
+    async fn stream_events(&mut self) -> Pin<Box<dyn Stream<Item = NodeSpecificEvent> + Send>> {
+        println!("Got here");
+
+        println!("Attempting to subscribe to LND channel events...");
+        
+        let mut client_guard = self.client.lock().await;
+
+        let channel_event_stream = match client_guard
             .lightning()
             .subscribe_channel_events(ChannelEventSubscription {})
             .await
@@ -373,10 +377,10 @@ impl LightningClient for LndNode {
                 return Box::pin(stream::empty());
             }
         };
+        println!("Finished channel events subscription block.");
 
-        let invoice_event_stream = match self.client
-            .lock()
-            .await
+/*         println!("Attempting to subscribe to LND invoice events...");
+        let invoice_event_stream = match client_guard
             .lightning()
             .subscribe_invoices(InvoiceSubscription {
                 add_index: 0,
@@ -390,9 +394,10 @@ impl LightningClient for LndNode {
                 return Box::pin(stream::empty());
             }
         };
+        println!("Finished invoice events subscription block."); */
 
         let event_stream = async_stream::stream! {
-            let channel_events = channel_event_stream.filter_map(|result| { 
+            let mut channel_events = channel_event_stream.filter_map(|result| { 
                 match result {
                     Ok(update) => {
                         let event_opt = match update.r#type() {
@@ -444,7 +449,7 @@ impl LightningClient for LndNode {
                 }
             });
 
-            let invoice_events = invoice_event_stream.filter_map(|result| {
+/*             let invoice_events = invoice_event_stream.filter_map(|result| {
                 match result {
                     Ok(invoice) => {
                         let event_opt = match invoice.state() {
@@ -498,11 +503,11 @@ impl LightningClient for LndNode {
                         None
                     }
                 }
-            });
+            }); */
 
-            let mut merged_stream = stream::select(channel_events, invoice_events);
+            //let mut merged_stream = stream::select(channel_events, invoice_events);
 
-            while let Some(event) = merged_stream.next().await {
+            while let Some(event) = channel_events.next().await {
                 yield event;
             }
         };
@@ -562,7 +567,7 @@ impl LightningClient for ClnNode {
         Ok(node_channels)
     }
 
-    async fn stream_events(&self) -> Pin<Box<dyn Stream<Item = NodeSpecificEvent> + Send>> {
+    async fn stream_events(&mut self) -> Pin<Box<dyn Stream<Item = NodeSpecificEvent> + Send>> {
         let event_stream = async_stream::stream! {
             let mut counter = 0;
             loop {

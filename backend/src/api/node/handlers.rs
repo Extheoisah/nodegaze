@@ -46,9 +46,9 @@ pub async fn authenticate_node(
                     let (sender, receiver) = mpsc::channel::<NodeSpecificEvent>(32);    
 
                     let collector = EventCollector::new(sender);
-                    let ln_client: Arc<Mutex<Box<dyn LightningClient  + Send + Sync + 'static>>>  = Arc::new(Mutex::new(Box::new(lnd_node)));
+                    let lnd_node_: Arc<Mutex<Box<dyn LightningClient  + Send + Sync + 'static>>>  = Arc::new(Mutex::new(Box::new(lnd_node)));
 
-                    collector.start_sending(info.pubkey, ln_client).await;
+                    collector.start_sending(info.pubkey, lnd_node_).await;
 
                     let processor = EventProcessor::new();
                     processor.start_receiving(receiver);

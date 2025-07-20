@@ -88,14 +88,14 @@ impl EventCollector {
     pub async fn start_sending(
         &self,
         node_id: PublicKey,
-        ln_client: Arc<Mutex<Box<dyn LightningClient  + Send + Sync + 'static>>>,
+        lnd_node_: Arc<Mutex<Box<dyn LightningClient  + Send + Sync + 'static>>>,
     ) {
         let sender = self.raw_event_sender.clone();
         let node_id_for_task = node_id.clone();
 
         tokio::spawn(async move {
-            let client_guard = ln_client.lock().await;
-            let mut event_stream: Pin<Box<dyn Stream<Item = NodeSpecificEvent> + std::marker::Send>> = client_guard.stream_events().await;
+            let mut lnd_node_guard = lnd_node_.lock().await;
+            let mut event_stream: Pin<Box<dyn Stream<Item = NodeSpecificEvent> + std::marker::Send>> = lnd_node_guard.stream_events().await;
 
             while let Some(event) = event_stream.next().await {
                 if sender.send(event).await.is_err() {
