@@ -6,7 +6,6 @@
 use crate::api::common::ApiResponse;
 use crate::config::Config;
 use crate::database::models::{AcceptInviteRequest, CreateInviteRequest, Invite, User};
-use crate::database::models::{AcceptInviteRequest, CreateInviteRequest, Invite, User};
 use crate::services::invite_service::InviteService;
 use crate::services::user_service::UserService;
 use crate::utils::jwt::Claims;

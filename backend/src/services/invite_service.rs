@@ -13,11 +13,8 @@ use crate::repositories::role_repository::RoleRepository;
 use crate::repositories::user_repository::UserRepository;
 use crate::services::email_service::EmailService;
 use crate::utils::generate_random_string::generate_random_string;
-use bcrypt::{hash, verify};
-use bcrypt::{hash, verify};
 use chrono::{Duration, Utc};
 use sqlx::SqlitePool;
-use uuid::Uuid;
 use uuid::Uuid;
 use validator::Validate;
 
@@ -229,8 +226,8 @@ impl<'a> InviteService<'a> {
 
         let rows_affected = sqlx::query!(
             r#"
-            UPDATE invites 
-            SET expires_at = ?, 
+            UPDATE invites
+            SET expires_at = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ? AND is_deleted = 0
             "#,
@@ -331,8 +328,8 @@ impl<'a> InviteService<'a> {
         // Update invite status to accepted
         let rows_affected = sqlx::query!(
             r#"
-            UPDATE invites 
-            SET invite_status = ?, 
+            UPDATE invites
+            SET invite_status = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ? AND is_deleted = 0
             "#,
