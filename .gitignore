@@ -8,3 +8,4 @@ Cargo.lock
 *.db-wal
 *.cert
 notes.md
+.sqlx

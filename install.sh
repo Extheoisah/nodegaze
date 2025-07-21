@@ -1,1 +1,1 @@
-# this file will hold the installation script for the project.
+# this file will hold the one click installation script for the project.
