@@ -69,7 +69,7 @@ BEGIN
     UPDATE roles SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
 END;
 
-INSERT OR IGNORE INTO roles (id, name) VALUES 
+INSERT OR IGNORE INTO roles (id, name) VALUES
     ('01932f4e-8b2a-7a3c-9d5e-1f2a3b4c5d6e', 'Admin'),
     ('01932f4e-8b2b-7a3c-9d5f-2a3b4c5d6e7f', 'Member');
 
@@ -138,4 +138,33 @@ CREATE TRIGGER invites_updated_at
     WHEN NEW.updated_at = OLD.updated_at
 BEGIN
     UPDATE invites SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+END;
+
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    notification_type TEXT NOT NULL,
+    url TEXT NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    is_deleted BOOLEAN NOT NULL DEFAULT 0,
+    deleted_at DATETIME DEFAULT NULL,
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_notifications_account_id ON notifications(account_id);
+CREATE INDEX idx_notifications_user_id ON notifications(user_id);
+CREATE INDEX idx_notifications_type ON notifications(notification_type);
+
+CREATE TRIGGER notifications_updated_at
+    AFTER UPDATE ON notifications
+    FOR EACH ROW
+    WHEN NEW.updated_at = OLD.updated_at
+BEGIN
+    UPDATE notifications SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
 END;

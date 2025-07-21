@@ -325,3 +325,78 @@ pub struct UserWithRoleAndPermissions {
     pub user: User,
     pub role: Role,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Notification {
+    pub id: String,
+    pub account_id: String,
+    pub user_id: String,
+    pub name: String,
+    pub notification_type: NotificationType,
+    pub url: String,
+    pub is_active: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub is_deleted: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, PartialEq)]
+#[sqlx(type_name = "TEXT")]
+pub enum NotificationType {
+    Webhook,
+    Discord,
+}
+
+impl std::fmt::Display for NotificationType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NotificationType::Webhook => write!(f, "webhook"),
+            NotificationType::Discord => write!(f, "discord"),
+        }
+    }
+}
+
+impl std::str::FromStr for NotificationType {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "webhook" => Ok(NotificationType::Webhook),
+            "discord" => Ok(NotificationType::Discord),
+            _ => Err(format!("Invalid notification type: {}", s)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+pub struct CreateNotification {
+    #[validate(length(min = 1, message = "Notification ID is required"))]
+    pub id: String,
+    #[validate(length(min = 1, message = "Account ID is required"))]
+    pub account_id: String,
+    #[validate(length(min = 1, message = "User ID is required"))]
+    pub user_id: String,
+    #[validate(length(min = 1, max = 255, message = "Name must be between 1-255 characters"))]
+    pub name: String,
+    pub notification_type: NotificationType,
+    #[validate(url(message = "Must be a valid URL"))]
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+pub struct CreateNotificationRequest {
+    #[validate(length(min = 1, max = 255, message = "Name must be between 1-255 characters"))]
+    pub name: String,
+    pub notification_type: NotificationType,
+    #[validate(url(message = "Must be a valid URL"))]
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+pub struct UpdateNotificationRequest {
+    #[validate(length(min = 1, max = 255, message = "Name must be between 1-255 characters"))]
+    pub name: Option<String>,
+    #[validate(url(message = "Must be a valid URL"))]
+    pub url: Option<String>,
+    pub is_active: Option<bool>,
+}

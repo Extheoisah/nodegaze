@@ -34,6 +34,10 @@ async fn main() {
         .nest("/api/account", api::account::routes::account_router().await)
         .nest("/auth", auth::routes::auth_router())
         .nest("/api/invite", api::invite::routes::invite_router().await)
+        .nest(
+            "/api/notification",
+            api::notification::routes::notification_router().await,
+        )
         .layer(Extension(pool));
 
     let bind_address = format!("0.0.0.0:{}", config.server_port);
