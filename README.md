@@ -18,8 +18,9 @@ NodeGaze helps you truly see, understand, and master your Lightning node, settin
 
 - Rust toolchain
 - SQLite
+- Make
 
-> SQLx-cli you can install it using `cargo install sqlx-cli`
+> You will need SQLx-cli for db operations, for db operations, you can install it using `cargo install sqlx-cli`
 
 ### Getting Started
 
@@ -29,26 +30,30 @@ NodeGaze helps you truly see, understand, and master your Lightning node, settin
    cd nodegaze
    ```
 
-3. **Set up the database**
+2. **Set up environment variables**
    ```bash
-   # Create environment file by copying the example, make sure to udpate the values.
+   # Create environment file by copying the example, make sure to update the values.
    cp .env.example .env
-
-   # Run database migrations
-   sqlx migrate run --source backend/migrations
-
-   # Generate offline query data for SQLx
-   cargo sqlx prepare --workspace
    ```
 
-4. **Run the project**
+3. **Quick setup and run**
    ```bash
-   cargo run
+   # Complete setup (database creation, migrations, and SQLx preparation) then run
+   make dev
    ```
 
-### Database Management
+   **Or step by step:**
+   ```bash
+   # Set up database only
+   make setup
 
-The project uses SQLite with SQLx for database operations. Key commands:
+   # Run the project
+   make run
+   ```
+
+### Manual Database Management
+
+The project uses SQLite with SQLx for database operations. Manual commands:
 
 - **Run migrations**: `sqlx migrate run --source backend/migrations`
 - **Create new migration**: `sqlx migrate add <migration_name> --source backend/migrations`
@@ -61,12 +66,16 @@ Copy `.env.example` to `.env` and configure:
 
 - `DATABASE_URL`: SQLite database path
 - `DB_MAX_CONNECTIONS`: Maximum database connections (default: 5)
-- `DB_ACQUIRE_TIMEOUT_SECONDS`: Connection timeout (default: 30)
+- `DB_ACQUIRE_TIMEOUT_SECONDS`: Connection timeout (default: 3)
+- `JWT_SECRET`: Secret key for JWT token generation
+- `JWT_EXPIRES_IN_SECONDS`: JWT token expiration time (default: 86400)
+- `SERVER_PORT`: Server port (default: 3000)
 - `ENCRYPTION_KEY`: Key for data encryption
 
 ### Development Tools
 
 The Nix shell provides:
+> This is optional if you are not on linux or not familiar with Nix
 
 - **bacon**: Continuous testing and checking
 - **sqlx-cli**: Database migrations and management
@@ -85,14 +94,3 @@ The Nix shell provides:
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-```
-
-This README provides:
-
-- Clear project description and features
-- Step-by-step development setup using the exact commands you used
-- Database management instructions with SQLx commands
-- Environment variable configuration
-- Development tools explanation
-- Contributing guidelines
-- License information
