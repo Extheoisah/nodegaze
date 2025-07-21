@@ -3,6 +3,7 @@
 //! Handles all account-related business operations
 
 use crate::database::models::{Account, CreateAccount, CreateNewAccount, UserWithAccount};
+use crate::database::models::{Account, CreateAccount, CreateNewAccount, UserWithAccount};
 use crate::errors::{ServiceError, ServiceResult};
 use crate::repositories::account_repository::AccountRepository;
 use crate::repositories::role_repository::RoleRepository;
@@ -119,7 +120,7 @@ impl<'a> AccountService<'a> {
             email: create_account.email.clone(),
         };
 
-        let accountId = Uuid::now_v7().to_string();
+        let account_id = Uuid::now_v7().to_string();
         // Insert the account into the database
         let account = sqlx::query_as!(
             crate::database::models::Account,
@@ -135,7 +136,7 @@ impl<'a> AccountService<'a> {
             is_deleted as "is_deleted!",
             deleted_at as "deleted_at?: chrono::DateTime<chrono::Utc>"
             "#,
-            accountId,
+            account_id,
             new_account.name,
             true
         )
@@ -154,7 +155,7 @@ impl<'a> AccountService<'a> {
         let password_hash = bcrypt::hash(&create_account.password, bcrypt::DEFAULT_COST)
             .map_err(|e| ServiceError::validation(format!("Password hashing failed: {}", e)))?;
 
-        let userId = Uuid::now_v7().to_string();
+        let user_id = Uuid::now_v7().to_string();
         // Insert the user into the database
         let user = sqlx::query_as!(
             crate::database::models::User,
@@ -174,7 +175,7 @@ impl<'a> AccountService<'a> {
             is_deleted as "is_deleted!",
             deleted_at as "deleted_at?: chrono::DateTime<chrono::Utc>"
             "#,
-            userId,
+            user_id,
             account.id,
             role.id,
             create_account.username,

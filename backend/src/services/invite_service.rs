@@ -14,8 +14,10 @@ use crate::repositories::user_repository::UserRepository;
 use crate::services::email_service::EmailService;
 use crate::utils::generate_random_string::generate_random_string;
 use bcrypt::{hash, verify};
+use bcrypt::{hash, verify};
 use chrono::{Duration, Utc};
 use sqlx::SqlitePool;
+use uuid::Uuid;
 use uuid::Uuid;
 use validator::Validate;
 
@@ -369,7 +371,7 @@ impl<'a> InviteService<'a> {
         let password_hash = bcrypt::hash(&accept_invite.password, bcrypt::DEFAULT_COST)
             .map_err(|e| ServiceError::validation(format!("Password hashing failed: {}", e)))?;
 
-        let userId = Uuid::now_v7().to_string();
+        let user_id = Uuid::now_v7().to_string();
         // Create the user in the database
         let user = sqlx::query_as!(
             crate::database::models::User,
@@ -389,7 +391,7 @@ impl<'a> InviteService<'a> {
             is_deleted as "is_deleted!",
             deleted_at as "deleted_at?: chrono::DateTime<chrono::Utc>"
             "#,
-            userId,
+            user_id,
             invite.account_id,
             role.id,
             accept_invite.username,
