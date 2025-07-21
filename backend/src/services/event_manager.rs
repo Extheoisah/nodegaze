@@ -125,11 +125,8 @@ impl EventProcessor {
                         eprintln!("Failed to transform or enrich event.");
                     }
                 }
-            }
-            println!("Receiver task for channel ended.");
-        });
-    }
 }
+
 
 async fn transform_and_enrich_event(
     raw_event: NodeSpecificEvent,

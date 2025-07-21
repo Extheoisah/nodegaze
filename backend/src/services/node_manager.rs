@@ -376,6 +376,30 @@ impl LightningClient for LndNode {
 /* 
         println!("Attempting to subscribe to LND invoice events...");
         let invoice_event_stream = match self.client.lock().await
+        println!("Got here");
+
+        println!("Attempting to subscribe to LND channel events...");
+        
+        let mut client_guard = self.client.lock().await;
+
+        let channel_event_stream = match client_guard
+            .lightning()
+            .subscribe_channel_events(ChannelEventSubscription {})
+            .await
+        {
+            Ok(response) => {
+                println!("LND channel events subscription successful: {:?}", response);
+                response.into_inner()
+            },
+            Err(e) => {
+                eprintln!("Error subscribing to LND channel events: {:?}", e);
+                return Box::pin(stream::empty());
+            }
+        };
+        println!("Finished channel events subscription block.");
+
+/*         println!("Attempting to subscribe to LND invoice events...");
+        let invoice_event_stream = match client_guard
             .lightning()
             .subscribe_invoices(InvoiceSubscription {
                 add_index: 0,
@@ -391,6 +415,15 @@ impl LightningClient for LndNode {
             };
         println!("Finished invoice events subscription block."); */
         
+        {
+            Ok(response) => response.into_inner(),
+            Err(e) => {
+                eprintln!("Error subscribing to LND invoice events: {:?}", e);
+                return Box::pin(stream::empty());
+            }
+        };
+        println!("Finished invoice events subscription block."); */
+      
         let event_stream = async_stream::stream! {
             let mut channel_events = channel_event_stream.filter_map(|result| { 
                 match result {
@@ -500,7 +533,6 @@ impl LightningClient for LndNode {
                 }
             }); */
 
-            // let mut merged_stream = stream::select(channel_events, invoice_events);
 
             while let Some(event) = channel_events.next().await {
                 yield event;

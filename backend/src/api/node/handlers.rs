@@ -8,6 +8,7 @@ use crate::services::node_manager::{
     ClnConnection, ClnNode, ConnectionRequest, LndConnection, LndNode,
 };
 use crate::services::event_manager::{EventCollector, EventDispatcher, EventProcessor, NodeSpecificEvent};
+use crate::services::event_manager::{EventCollector, EventProcessor, NodeSpecificEvent};
 use crate::utils::jwt::Claims;
 use crate::utils::{NodeId, NodeInfo};
 use axum::{
@@ -18,6 +19,13 @@ use sqlx::SqlitePool;
 use tokio::sync::mpsc;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
+use tokio::sync::mpsc;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
+use uuid::Uuid;
+
 
 /// Node authentication response with stored credential info
 #[derive(Debug, serde::Serialize)]
@@ -49,7 +57,7 @@ pub async fn authenticate_node(
                     let lnd_node_: Arc<Mutex<Box<dyn LightningClient  + Send + Sync + 'static>>>  = Arc::new(Mutex::new(Box::new(lnd_node)));
 
                     collector.start_sending(info.pubkey, lnd_node_).await;
-
+                  
                     let dispatcher = Arc::new(EventDispatcher {});
 
                     let processor = EventProcessor::new(dispatcher);
@@ -173,6 +181,7 @@ async fn store_node_credentials(
 
     // Create new credential record with all required fields
     let create_credential = CreateCredential {
+        id: Uuid::now_v7().to_string(),
         user_id: claims.sub.clone(),
         account_id: claims.account_id.clone(),
         node_id: node_info.pubkey.to_string(),

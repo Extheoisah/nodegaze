@@ -5,7 +5,7 @@
 
 use crate::config::Config;
 use anyhow::Result;
-use sqlx::{Sqlite, SqlitePool, sqlite::SqlitePoolOptions};
+use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
 use std::time::Duration;
 
 pub mod models;

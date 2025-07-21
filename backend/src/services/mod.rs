@@ -7,6 +7,8 @@
 pub mod account_service;
 pub mod credential_service;
 pub mod data_aggregator;
+pub mod email_service;
+pub mod invite_service;
 pub mod node_manager;
 pub mod user_service;
 pub mod event_manager;

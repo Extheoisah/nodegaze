@@ -8,6 +8,7 @@ use crate::repositories::credential_repository::CredentialRepository;
 use crate::services::user_service::UserService;
 use crate::utils::jwt::{Claims, JwtUtils, NodeCredentials};
 use sqlx::SqlitePool;
+use uuid::Uuid;
 use validator::Validate;
 
 /// Authentication service for handling login, token generation, and user management
@@ -120,7 +121,7 @@ impl<'a> AuthService<'a> {
 
         let user_info = UserInfo {
             id: user_id,
-            name: user.name,
+            username: user.username,
             email: user.email,
             account_id: account_id,
             account_name: account.name,
@@ -176,6 +177,7 @@ impl<'a> AuthService<'a> {
 
         // Create credential record with all required fields
         let create_credential = crate::database::models::CreateCredential {
+            id: Uuid::now_v7().to_string(),
             user_id: claims.sub.clone(),
             account_id: claims.account_id.clone(),
             node_id: request.node_id.clone(),

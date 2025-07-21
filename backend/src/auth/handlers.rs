@@ -75,7 +75,7 @@ pub async fn me(
     // Get user information from database using claims
     let user = match sqlx::query!(
         r#"
-        SELECT u.name, u.email, a.name as account_name, r.name as role_name
+        SELECT u.username, u.email, a.name as account_name, r.name as role_name
         FROM users u
         JOIN accounts a ON u.account_id = a.id
         JOIN roles r ON u.role_id = r.id
@@ -105,7 +105,7 @@ pub async fn me(
 
     let user_info = UserInfo {
         id: claims.sub.clone(),
-        name: user.name,
+        username: user.username,
         email: user.email,
         account_id: claims.account_id.clone(),
         account_name: user.account_name,
