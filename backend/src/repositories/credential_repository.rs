@@ -5,7 +5,6 @@ use crate::database::models::{CreateCredential, Credential};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
-use uuid::Uuid;
 
 /// Repository for credential database operations.
 ///
@@ -43,8 +42,8 @@ impl<'a> CredentialRepository<'a> {
         let credential = sqlx::query_as!(
             Credential,
             r#"
-            INSERT INTO credentials (user_id, account_id, node_id, node_alias, macaroon, tls_cert, address, node_type, client_cert, client_key, ca_cert, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO credentials (id, user_id, account_id, node_id, node_alias, macaroon, tls_cert, address, node_type, client_cert, client_key, ca_cert, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING
             id as "id!",
             user_id as "user_id!",
@@ -64,6 +63,7 @@ impl<'a> CredentialRepository<'a> {
             is_deleted as "is_deleted!",
             deleted_at as "deleted_at?: DateTime<Utc>"
             "#,
+            credential.id,
             credential.user_id,
             credential.account_id,
             credential.node_id,

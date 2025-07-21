@@ -15,9 +15,13 @@ use axum::{
     http::StatusCode,
 };
 use sqlx::SqlitePool;
+
 use tokio::sync::mpsc;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
+use uuid::Uuid;
+
 
 /// Node authentication response with stored credential info
 #[derive(Debug, serde::Serialize)]
@@ -171,6 +175,7 @@ async fn store_node_credentials(
 
     // Create new credential record with all required fields
     let create_credential = CreateCredential {
+        id: Uuid::now_v7().to_string(),
         user_id: claims.sub.clone(),
         account_id: claims.account_id.clone(),
         node_id: node_info.pubkey.to_string(),

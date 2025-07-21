@@ -17,7 +17,6 @@ use crate::api::common::ApiResponse;
 use axum::{Extension, Router, response::Json, routing::get};
 use config::Config;
 use database::Database;
-use serde_json::{Value, json};
 use tracing::info;
 use tracing_subscriber::fmt::init;
 
@@ -34,6 +33,7 @@ async fn main() {
         .nest("/api/node", api::node::routes::node_router().await)
         .nest("/api/account", api::account::routes::account_router().await)
         .nest("/auth", auth::routes::auth_router())
+        .nest("/api/invite", api::invite::routes::invite_router().await)
         .layer(Extension(pool));
 
     let bind_address = format!("0.0.0.0:{}", config.server_port);

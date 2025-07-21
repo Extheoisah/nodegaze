@@ -3,12 +3,10 @@
 //! Provides read-only access to system roles with:
 //! - Role lookup by ID or name
 //! - Complete role listing
+use crate::database::models::Role;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
-use uuid::Uuid;
-
-use crate::database::models::Role;
 
 /// Repository for role database operations.
 ///

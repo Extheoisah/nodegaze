@@ -6,7 +6,6 @@ use crate::database::models::{Account, CreateAccount};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
-use uuid::Uuid;
 
 pub struct AccountRepository<'a> {
     pool: &'a SqlitePool,

@@ -30,7 +30,7 @@ pub struct LoginResponse {
 #[derive(Debug, Serialize)]
 pub struct UserInfo {
     pub id: String,
-    pub name: String,
+    pub username: String,
     pub email: String,
     pub account_id: String,
     pub account_name: String,

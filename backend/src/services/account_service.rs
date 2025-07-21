@@ -2,14 +2,12 @@
 //!
 //! Handles all account-related business operations
 
-use crate::database::models::{
-    Account, CreateAccount, CreateNewAccount, CreateNewUser, CreateUser, UserWithAccount,
-};
+use crate::database::models::{Account, CreateAccount, CreateNewAccount, UserWithAccount};
 use crate::errors::{ServiceError, ServiceResult};
 use crate::repositories::account_repository::AccountRepository;
 use crate::repositories::role_repository::RoleRepository;
-use crate::services::user_service::UserService;
 use sqlx::SqlitePool;
+use uuid::Uuid;
 use validator::Validate;
 
 /// Service layer for account operations.
@@ -121,11 +119,13 @@ impl<'a> AccountService<'a> {
             email: create_account.email.clone(),
         };
 
+        let account_id = Uuid::now_v7().to_string();
+        // Insert the account into the database
         let account = sqlx::query_as!(
             crate::database::models::Account,
             r#"
-            INSERT INTO accounts (name, is_active)
-            VALUES (?, ?)
+            INSERT INTO accounts (id, name, is_active)
+            VALUES (?, ?, ?)
             RETURNING
             id as "id!",
             name as "name!",
@@ -135,6 +135,7 @@ impl<'a> AccountService<'a> {
             is_deleted as "is_deleted!",
             deleted_at as "deleted_at?: chrono::DateTime<chrono::Utc>"
             "#,
+            account_id,
             new_account.name,
             true
         )
@@ -153,16 +154,18 @@ impl<'a> AccountService<'a> {
         let password_hash = bcrypt::hash(&create_account.password, bcrypt::DEFAULT_COST)
             .map_err(|e| ServiceError::validation(format!("Password hashing failed: {}", e)))?;
 
+        let user_id = Uuid::now_v7().to_string();
+        // Insert the user into the database
         let user = sqlx::query_as!(
             crate::database::models::User,
             r#"
-            INSERT INTO users (account_id, role_id, name, password_hash, email, is_active)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO users (id, account_id, role_id, username, password_hash, email, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             RETURNING
             id as "id!",
             account_id as "account_id!",
             role_id as "role_id!",
-            name as "name!",
+            username as "username!",
             password_hash as "password_hash!",
             email as "email!",
             is_active as "is_active!",
@@ -171,6 +174,7 @@ impl<'a> AccountService<'a> {
             is_deleted as "is_deleted!",
             deleted_at as "deleted_at?: chrono::DateTime<chrono::Utc>"
             "#,
+            user_id,
             account.id,
             role.id,
             create_account.username,
@@ -182,7 +186,7 @@ impl<'a> AccountService<'a> {
         .await
         .map_err(|e| {
             let error_msg = e.to_string();
-            if error_msg.contains("UNIQUE constraint failed: users.name") {
+            if error_msg.contains("UNIQUE constraint failed: users.username") {
                 ServiceError::already_exists("User with username", &create_account.username)
             } else if error_msg.contains("UNIQUE constraint failed: users.email") {
                 ServiceError::already_exists("User with email", &create_account.email)
