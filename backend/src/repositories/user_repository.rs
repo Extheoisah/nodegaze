@@ -2,12 +2,10 @@
 //!
 //! Provides CRUD operations for system users
 
+use crate::database::models::{CreateUser, User};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
-use uuid::Uuid;
-
-use crate::database::models::{CreateUser, User};
 
 /// Repository for user database operations.
 ///
@@ -38,8 +36,8 @@ impl<'a> UserRepository<'a> {
         let user = sqlx::query_as!(
             User,
             r#"
-            INSERT INTO users (account_id, role_id, username, password_hash, email, is_active)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO users (id, account_id, role_id, username, password_hash, email, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             RETURNING
             id as "id!",
             account_id as "account_id!",
@@ -53,6 +51,7 @@ impl<'a> UserRepository<'a> {
             is_deleted as "is_deleted!",
             deleted_at as "deleted_at?: DateTime<Utc>"
             "#,
+            user.id,
             user.account_id,
             user.role_id,
             user.username,

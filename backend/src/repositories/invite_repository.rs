@@ -2,12 +2,10 @@
 //!
 //! Provides CRUD operations for system invites
 
+use crate::database::models::{CreateInvite, Invite, InviteStatus};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
-use uuid::Uuid;
-
-use crate::database::models::{CreateInvite, Invite, InviteStatus};
 
 /// Repository for invite database operations.
 ///
@@ -38,8 +36,8 @@ impl<'a> InviteRepository<'a> {
         let invite = sqlx::query_as!(
             Invite,
             r#"
-            INSERT INTO invites (account_id, inviter_id, invitee_email, token, invite_status, expires_at, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO invites (id, account_id, inviter_id, invitee_email, token, invite_status, expires_at, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING 
             id as "id!",
             account_id as "account_id!",
@@ -54,6 +52,7 @@ impl<'a> InviteRepository<'a> {
             is_deleted as "is_deleted!",
             deleted_at as "deleted_at?: DateTime<Utc>"
             "#,
+            invite.id,
             invite.account_id,
             invite.inviter_id,
             invite.invitee_email,

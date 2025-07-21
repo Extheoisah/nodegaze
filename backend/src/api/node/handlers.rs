@@ -8,12 +8,13 @@ use crate::services::node_manager::{
     ClnConnection, ClnNode, ConnectionRequest, LndConnection, LndNode,
 };
 use crate::utils::jwt::Claims;
-use crate::utils::{NodeId, NodeInfo, crypto::StringCrypto};
+use crate::utils::{NodeId, NodeInfo};
 use axum::{
     extract::{Extension, Json},
     http::StatusCode,
 };
 use sqlx::SqlitePool;
+use uuid::Uuid;
 
 /// Node authentication response with stored credential info
 #[derive(Debug, serde::Serialize)]
@@ -154,6 +155,7 @@ async fn store_node_credentials(
 
     // Create new credential record with all required fields
     let create_credential = CreateCredential {
+        id: Uuid::now_v7().to_string(),
         user_id: claims.sub.clone(),
         account_id: claims.account_id.clone(),
         node_id: node_info.pubkey.to_string(),

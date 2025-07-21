@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS accounts (
-    id TEXT PRIMARY KEY DEFAULT (uuid()),
+    id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT 1,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -20,7 +20,7 @@ BEGIN
 END;
 
 CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY DEFAULT (uuid()),
+    id TEXT PRIMARY KEY,
     account_id TEXT NOT NULL,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
@@ -49,7 +49,7 @@ BEGIN
 END;
 
 CREATE TABLE IF NOT EXISTS roles (
-    id TEXT PRIMARY KEY DEFAULT (uuid()),
+    id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     is_active BOOLEAN NOT NULL DEFAULT 1,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -69,10 +69,12 @@ BEGIN
     UPDATE roles SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
 END;
 
-INSERT OR IGNORE INTO roles (name) VALUES ('Admin'), ('Member');
+INSERT OR IGNORE INTO roles (id, name) VALUES 
+    ('01932f4e-8b2a-7a3c-9d5e-1f2a3b4c5d6e', 'Admin'),
+    ('01932f4e-8b2b-7a3c-9d5f-2a3b4c5d6e7f', 'Member');
 
 CREATE TABLE IF NOT EXISTS credentials (
-    id TEXT PRIMARY KEY DEFAULT (uuid()),
+    id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
     account_id TEXT NOT NULL,
     node_id TEXT NOT NULL,
@@ -108,7 +110,7 @@ BEGIN
 END;
 
 CREATE TABLE IF NOT EXISTS invites (
-    id TEXT PRIMARY KEY DEFAULT (uuid()),
+    id TEXT PRIMARY KEY,
     account_id TEXT NOT NULL,
     inviter_id TEXT NOT NULL,
     invitee_email TEXT NOT NULL,

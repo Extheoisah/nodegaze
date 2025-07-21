@@ -9,6 +9,7 @@ use crate::repositories::role_repository::RoleRepository;
 use crate::repositories::user_repository::UserRepository;
 use bcrypt::{DEFAULT_COST, hash, verify};
 use sqlx::SqlitePool;
+use uuid::Uuid;
 use validator::Validate;
 
 pub struct UserService<'a> {
@@ -121,6 +122,7 @@ impl<'a> UserService<'a> {
         let email = create_user.email.clone();
 
         let data = CreateUser {
+            id: Uuid::now_v7().to_string(),
             account_id: create_user.account_id,
             role_id: create_user.role_id,
             username: create_user.username,

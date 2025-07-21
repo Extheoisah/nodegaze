@@ -2,14 +2,12 @@
 //!
 //! Handles all account-related business operations
 
-use crate::database::models::{
-    Account, CreateAccount, CreateNewAccount, CreateNewUser, CreateUser, UserWithAccount,
-};
+use crate::database::models::{Account, CreateAccount, CreateNewAccount, UserWithAccount};
 use crate::errors::{ServiceError, ServiceResult};
 use crate::repositories::account_repository::AccountRepository;
 use crate::repositories::role_repository::RoleRepository;
-use crate::services::user_service::UserService;
 use sqlx::SqlitePool;
+use uuid::Uuid;
 use validator::Validate;
 
 /// Service layer for account operations.
@@ -121,11 +119,13 @@ impl<'a> AccountService<'a> {
             email: create_account.email.clone(),
         };
 
+        let accountId = Uuid::now_v7().to_string();
+        // Insert the account into the database
         let account = sqlx::query_as!(
             crate::database::models::Account,
             r#"
-            INSERT INTO accounts (name, is_active)
-            VALUES (?, ?)
+            INSERT INTO accounts (id, name, is_active)
+            VALUES (?, ?, ?)
             RETURNING
             id as "id!",
             name as "name!",
@@ -135,6 +135,7 @@ impl<'a> AccountService<'a> {
             is_deleted as "is_deleted!",
             deleted_at as "deleted_at?: chrono::DateTime<chrono::Utc>"
             "#,
+            accountId,
             new_account.name,
             true
         )
@@ -153,11 +154,13 @@ impl<'a> AccountService<'a> {
         let password_hash = bcrypt::hash(&create_account.password, bcrypt::DEFAULT_COST)
             .map_err(|e| ServiceError::validation(format!("Password hashing failed: {}", e)))?;
 
+        let userId = Uuid::now_v7().to_string();
+        // Insert the user into the database
         let user = sqlx::query_as!(
             crate::database::models::User,
             r#"
-            INSERT INTO users (account_id, role_id, username, password_hash, email, is_active)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO users (id, account_id, role_id, username, password_hash, email, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             RETURNING
             id as "id!",
             account_id as "account_id!",
@@ -171,6 +174,7 @@ impl<'a> AccountService<'a> {
             is_deleted as "is_deleted!",
             deleted_at as "deleted_at?: chrono::DateTime<chrono::Utc>"
             "#,
+            userId,
             account.id,
             role.id,
             create_account.username,

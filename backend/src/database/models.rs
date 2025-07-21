@@ -107,6 +107,8 @@ pub struct CreateNewUser {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct CreateUser {
+    #[validate(length(min = 1, message = "User ID is required"))]
+    pub id: String,
     #[validate(length(min = 1, message = "Account ID is required"))]
     pub account_id: String,
 
@@ -170,6 +172,8 @@ pub struct Credential {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct CreateCredential {
+    #[validate(length(min = 1, message = "Credential ID is required"))]
+    pub id: String,
     #[validate(length(min = 1, message = "User ID is required"))]
     pub user_id: String,
 
@@ -255,6 +259,8 @@ impl std::str::FromStr for InviteStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct CreateInvite {
+    #[validate(length(min = 1, message = "Invite ID is required"))]
+    pub id: String,
     #[validate(length(min = 1, message = "Account ID is required"))]
     pub account_id: String,
     #[validate(length(min = 1, message = "Inviter ID is required"))]

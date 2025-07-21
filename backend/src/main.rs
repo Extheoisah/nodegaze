@@ -17,7 +17,6 @@ use crate::api::common::ApiResponse;
 use axum::{Extension, Router, response::Json, routing::get};
 use config::Config;
 use database::Database;
-use serde_json::{Value, json};
 use tracing::info;
 use tracing_subscriber::fmt::init;
 

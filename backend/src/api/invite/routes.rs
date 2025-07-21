@@ -3,7 +3,7 @@
 //! These routes provide endpoints for accessing and updating invite-specific requests
 
 use super::handlers::{accept_invite, create_invite, get_invite_by_id, get_invites, resend_invite};
-use crate::auth::middleware::{jwt_auth, node_credentials_required, optional_jwt_auth};
+use crate::auth::middleware::{jwt_auth, node_credentials_required};
 use axum::{
     Router, middleware,
     routing::{get, post},

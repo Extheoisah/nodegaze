@@ -1,6 +1,6 @@
 use crate::config::EmailConfig;
 use crate::errors::{ServiceError, ServiceResult};
-use lettre::message::{Mailbox, MessageBuilder, header::ContentType};
+use lettre::message::{Mailbox, header::ContentType};
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use std::str::FromStr;

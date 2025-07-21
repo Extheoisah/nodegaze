@@ -14,7 +14,6 @@ use aes_gcm::{
     aead::{Aead, KeyInit},
 };
 use base64::{Engine as _, engine::general_purpose};
-use dotenvy::var;
 
 #[derive(Debug)]
 pub enum CryptoError {
