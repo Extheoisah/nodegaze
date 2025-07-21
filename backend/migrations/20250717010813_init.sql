@@ -168,3 +168,40 @@ CREATE TRIGGER notifications_updated_at
 BEGIN
     UPDATE notifications SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
 END;
+
+---
+
+CREATE TABLE IF NOT EXISTS events (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    node_id TEXT NOT NULL,
+    node_alias TEXT DEFAULT '',
+    event_type TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    data TEXT NOT NULL, -- JSON data
+    timestamp DATETIME NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    is_deleted BOOLEAN NOT NULL DEFAULT 0,
+    deleted_at DATETIME DEFAULT NULL,
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_events_account_id ON events(account_id);
+CREATE INDEX idx_events_user_id ON events(user_id);
+CREATE INDEX idx_events_node_id ON events(node_id);
+CREATE INDEX idx_events_type ON events(event_type);
+CREATE INDEX idx_events_severity ON events(severity);
+CREATE INDEX idx_events_timestamp ON events(timestamp);
+
+CREATE TRIGGER events_updated_at
+    AFTER UPDATE ON events
+    FOR EACH ROW
+    WHEN NEW.updated_at = OLD.updated_at
+BEGIN
+    UPDATE events SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+END;

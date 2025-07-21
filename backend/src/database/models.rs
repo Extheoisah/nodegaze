@@ -400,3 +400,154 @@ pub struct UpdateNotificationRequest {
     pub url: Option<String>,
     pub is_active: Option<bool>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Event {
+    pub id: String,
+    pub account_id: String,
+    pub user_id: String,
+    pub node_id: String,
+    pub node_alias: String,
+    pub event_type: EventType,
+    pub severity: EventSeverity,
+    pub title: String,
+    pub description: String,
+    pub data: String, // JSON string
+    pub timestamp: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub is_deleted: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, PartialEq)]
+#[sqlx(type_name = "TEXT")]
+pub enum EventType {
+    ChannelOpened,
+    ChannelClosed,
+    InvoiceCreated,
+    InvoiceSettled,
+    InvoiceCancelled,
+    InvoiceAccepted,
+    PaymentSent,
+    PaymentReceived,
+    PaymentFailed,
+    NodeConnected,
+    NodeDisconnected,
+}
+
+impl std::fmt::Display for EventType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EventType::ChannelOpened => write!(f, "channel_opened"),
+            EventType::ChannelClosed => write!(f, "channel_closed"),
+            EventType::InvoiceCreated => write!(f, "invoice_created"),
+            EventType::InvoiceSettled => write!(f, "invoice_settled"),
+            EventType::InvoiceCancelled => write!(f, "invoice_cancelled"),
+            EventType::InvoiceAccepted => write!(f, "invoice_accepted"),
+            EventType::PaymentSent => write!(f, "payment_sent"),
+            EventType::PaymentReceived => write!(f, "payment_received"),
+            EventType::PaymentFailed => write!(f, "payment_failed"),
+            EventType::NodeConnected => write!(f, "node_connected"),
+            EventType::NodeDisconnected => write!(f, "node_disconnected"),
+        }
+    }
+}
+
+impl std::str::FromStr for EventType {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "channel_opened" => Ok(EventType::ChannelOpened),
+            "channel_closed" => Ok(EventType::ChannelClosed),
+            "invoice_created" => Ok(EventType::InvoiceCreated),
+            "invoice_settled" => Ok(EventType::InvoiceSettled),
+            "invoice_cancelled" => Ok(EventType::InvoiceCancelled),
+            "invoice_accepted" => Ok(EventType::InvoiceAccepted),
+            "payment_sent" => Ok(EventType::PaymentSent),
+            "payment_received" => Ok(EventType::PaymentReceived),
+            "payment_failed" => Ok(EventType::PaymentFailed),
+            "node_connected" => Ok(EventType::NodeConnected),
+            "node_disconnected" => Ok(EventType::NodeDisconnected),
+            _ => Err(format!("Invalid event type: {}", s)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, PartialEq)]
+#[sqlx(type_name = "TEXT")]
+pub enum EventSeverity {
+    Info,
+    Warning,
+    Critical,
+}
+
+impl std::fmt::Display for EventSeverity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EventSeverity::Info => write!(f, "info"),
+            EventSeverity::Warning => write!(f, "warning"),
+            EventSeverity::Critical => write!(f, "critical"),
+        }
+    }
+}
+
+impl std::str::FromStr for EventSeverity {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "info" => Ok(EventSeverity::Info),
+            "warning" => Ok(EventSeverity::Warning),
+            "critical" => Ok(EventSeverity::Critical),
+            _ => Err(format!("Invalid event severity: {}", s)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+pub struct CreateEvent {
+    #[validate(length(min = 1, message = "Event ID is required"))]
+    pub id: String,
+    #[validate(length(min = 1, message = "Account ID is required"))]
+    pub account_id: String,
+    #[validate(length(min = 1, message = "User ID is required"))]
+    pub user_id: String,
+    #[validate(length(min = 1, message = "Node ID is required"))]
+    pub node_id: String,
+    pub node_alias: String,
+    pub event_type: EventType,
+    pub severity: EventSeverity,
+    #[validate(length(min = 1, max = 255, message = "Title must be between 1-255 characters"))]
+    pub title: String,
+    #[validate(length(min = 1, message = "Description is required"))]
+    pub description: String,
+    pub data: String, // JSON string
+    pub timestamp: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventResponse {
+    pub id: String,
+    pub account_id: String,
+    pub user_id: String,
+    pub node_id: String,
+    pub node_alias: String,
+    pub event_type: EventType,
+    pub severity: EventSeverity,
+    pub title: String,
+    pub description: String,
+    pub data: serde_json::Value, // Parsed JSON
+    pub timestamp: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventFilters {
+    pub event_types: Option<Vec<EventType>>,
+    pub severities: Option<Vec<EventSeverity>>,
+    pub node_ids: Option<Vec<String>>,
+    pub start_date: Option<DateTime<Utc>>,
+    pub end_date: Option<DateTime<Utc>>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}

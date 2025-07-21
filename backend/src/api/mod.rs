@@ -7,6 +7,7 @@
 pub mod account;
 pub mod common;
 pub mod credential;
+pub mod event;
 pub mod invite;
 pub mod node;
 pub mod notification;
