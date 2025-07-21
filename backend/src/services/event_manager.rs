@@ -63,11 +63,6 @@ pub enum LNDEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CLNEvent {
     ChannelOpened { },
-    ChannelClosed { },
-    InvoiceCreated { },
-    InvoiceSettled { },
-    InvoiceCancelled { },
-    InvoiceAccepted { },
 }
 
 #[derive(Debug)]
@@ -108,24 +103,167 @@ impl EventCollector {
     }
 }
 
-pub struct EventProcessor {}
+pub struct EventProcessor {
+    dispatcher: Arc<EventDispatcher>,
+}
 
 impl EventProcessor {
-    pub fn new() -> Self {
-        EventProcessor { }
+    pub fn new(dispatcher: Arc<EventDispatcher>,) -> Self {
+        EventProcessor { dispatcher }
     }
 
     pub fn start_receiving(&self, mut receiver: mpsc::Receiver<NodeSpecificEvent>) {
+        let dispatcher_clone = self.dispatcher.clone();
         tokio::spawn(async move {
-            while let Some(event) = receiver.recv().await {
-                println!("Received event: {:?}", event);
+            while let Some(raw_event) = receiver.recv().await {
+                match transform_and_enrich_event(raw_event).await {
+                    Some(event) => {
+                        println!("Processed event: {:?}", event);
+                        dispatcher_clone.dispatch_event(event).await;
+                    }
+                    None => {
+                        eprintln!("Failed to transform or enrich event.");
+                    }
+                }
             }
             println!("Receiver task for channel ended.");
         });
     }
 }
 
+async fn transform_and_enrich_event(
+    raw_event: NodeSpecificEvent,
+) -> Option<Event> {
+        let event = match raw_event {
+            NodeSpecificEvent::LND(lnd_event) => {
+                let event = match lnd_event {
+                    LNDEvent::ChannelClosed { channel_id, counterparty_node_id } => Event {
+                        id: "".to_string(),
+                        timestamp: Utc::now(),
+                        event_type: "".to_string(),
+                        severity: EventSeverity::Critical,
+                        node_id: "".to_string(),
+                        node_alias: Some("".to_string()),
+                        data: serde_json::json!({
+                            "channel_id": channel_id,
+                            "counterparty_node_id": counterparty_node_id,
+                        }).as_object().unwrap().clone().into_iter().collect(),
+                    },
+                    LNDEvent::ChannelOpened { channel_id, counterparty_node_id } => Event {
+                        id: "".to_string(),
+                        timestamp: Utc::now(),
+                        event_type: "".to_string(),
+                        severity: EventSeverity::Critical,
+                        node_id: "".to_string(),
+                        node_alias: Some("".to_string()),
+                        data: serde_json::json!({
+                            "channel_id": channel_id,
+                            "counterparty_node_id": counterparty_node_id,
+                        }).as_object().unwrap().clone().into_iter().collect(),
+                    },
+                    LNDEvent::InvoiceCreated { 
+                        preimage, 
+                        hash, 
+                        value_msat, 
+                        state, 
+                        memo, 
+                        creation_date 
+                    } => Event {
+                        id: "".to_string(),
+                        timestamp: Utc::now(),
+                        event_type: "".to_string(),
+                        severity: EventSeverity::Critical,
+                        node_id: "".to_string(),
+                        node_alias: Some("".to_string()),
+                        data: serde_json::json!({
+                            "preimage": preimage,
+                            "payment_hash": hash,
+                        }).as_object().unwrap().clone().into_iter().collect(),
+                    },
+                    LNDEvent::InvoiceSettled { 
+                        preimage, 
+                        hash, 
+                        value_msat, 
+                        state, 
+                        memo, 
+                        creation_date 
+                    } => Event {
+                        id: "".to_string(),
+                        timestamp: Utc::now(),
+                        event_type: "".to_string(),
+                        severity: EventSeverity::Critical,
+                        node_id: "".to_string(),
+                        node_alias: Some("".to_string()),
+                        data: serde_json::json!({
+                            "preimage": preimage,
+                            "payment_hash": hash,
+                        }).as_object().unwrap().clone().into_iter().collect(),
+                    },
+                    LNDEvent::InvoiceCancelled { 
+                        preimage, 
+                        hash, 
+                        value_msat, 
+                        state, 
+                        memo, 
+                        creation_date 
+                    } => Event {
+                        id: "".to_string(),
+                        timestamp: Utc::now(),
+                        event_type: "".to_string(),
+                        severity: EventSeverity::Critical,
+                        node_id: "".to_string(),
+                        node_alias: Some("".to_string()),
+                        data: serde_json::json!({
+                            "preimage": preimage,
+                            "payment_hash": hash,
+                        }).as_object().unwrap().clone().into_iter().collect(),
+                    },
+                    LNDEvent::InvoiceAccepted { 
+                        preimage, 
+                        hash, 
+                        value_msat, 
+                        state, 
+                        memo, 
+                        creation_date 
+                    } => Event {
+                        id: "".to_string(),
+                        timestamp: Utc::now(),
+                        event_type: "".to_string(),
+                        severity: EventSeverity::Critical,
+                        node_id: "".to_string(),
+                        node_alias: Some("".to_string()),
+                        data: serde_json::json!({
+                            "preimage": preimage,
+                            "payment_hash": hash,
+                        }).as_object().unwrap().clone().into_iter().collect(),
+                    },
+                };
+                event
+            },
+            NodeSpecificEvent::CLN(cln_event) => {
+                let event = match cln_event {
+                    CLNEvent::ChannelOpened {  } => Event { 
+                        id: todo!(), 
+                        timestamp: todo!(), 
+                        event_type: todo!(), 
+                        severity: todo!(), 
+                        node_id: todo!(), 
+                        node_alias: todo!(), 
+                        data: todo!(),
+                    },
+                };
+                event
+            }
+        };
+        Some(event)
+}
+
+#[derive(Clone, Copy)]
 pub struct EventDispatcher {}
+
+impl EventDispatcher {
+    async fn dispatch_event(self, event: Event) {}
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum EventSeverity {
