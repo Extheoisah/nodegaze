@@ -11,3 +11,4 @@ pub mod event;
 pub mod invite;
 pub mod node;
 pub mod notification;
+pub mod payment;

@@ -39,6 +39,7 @@ async fn main() {
             api::notification::routes::notification_router().await,
         )
         .nest("/api/events", api::event::routes::event_router().await)
+        .nest("/api/payment", api::payment::routes::payment_router().await)
         .layer(Extension(pool));
 
     let bind_address = format!("0.0.0.0:{}", config.server_port);
