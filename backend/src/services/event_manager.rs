@@ -111,196 +111,7 @@ impl EventCollector {
 }
 
 #[derive(Clone)]
-pub struct EventProcessor {
-    dispatcher: Arc<EventDispatcher>,
-}
-
-impl EventProcessor {
-    pub fn new(dispatcher: Arc<EventDispatcher>) -> Self {
-        EventProcessor { dispatcher }
-    }
-
-    pub fn start_receiving(&self, mut receiver: mpsc::Receiver<NodeSpecificEvent>) {
-        let dispatcher_clone = self.dispatcher.clone();
-        tokio::spawn(async move {
-            while let Some(raw_event) = receiver.recv().await {
-                match transform_and_enrich_event(raw_event.clone()).await {
-                    Some(_event) => {
-                        // Use the raw event for processing since it has the actual data
-                        dispatcher_clone.dispatch_event(raw_event).await;
-                    }
-                    None => {
-                        tracing::error!("Failed to transform or enrich event: {:?}", raw_event);
-                    }
-                }
-            }
-        });
-    }
-}
-
-async fn transform_and_enrich_event(raw_event: NodeSpecificEvent) -> Option<Event> {
-    let event = match raw_event {
-        NodeSpecificEvent::LND(lnd_event) => {
-            let event = match lnd_event {
-                LNDEvent::ChannelClosed {
-                    channel_id,
-                    counterparty_node_id,
-                } => Event {
-                    id: "".to_string(),
-                    timestamp: Utc::now(),
-                    event_type: "".to_string(),
-                    severity: EventSeverity::Critical,
-                    node_id: "".to_string(),
-                    node_alias: Some("".to_string()),
-                    data: serde_json::json!({
-                        "channel_id": channel_id,
-                        "counterparty_node_id": counterparty_node_id,
-                    })
-                    .as_object()
-                    .unwrap()
-                    .clone()
-                    .into_iter()
-                    .collect(),
-                },
-                LNDEvent::ChannelOpened {
-                    channel_id,
-                    counterparty_node_id,
-                } => Event {
-                    id: "".to_string(),
-                    timestamp: Utc::now(),
-                    event_type: "".to_string(),
-                    severity: EventSeverity::Critical,
-                    node_id: "".to_string(),
-                    node_alias: Some("".to_string()),
-                    data: serde_json::json!({
-                        "channel_id": channel_id,
-                        "counterparty_node_id": counterparty_node_id,
-                    })
-                    .as_object()
-                    .unwrap()
-                    .clone()
-                    .into_iter()
-                    .collect(),
-                },
-                LNDEvent::InvoiceCreated {
-                    preimage,
-                    hash,
-                    value_msat,
-                    state,
-                    memo,
-                    creation_date,
-                } => Event {
-                    id: "".to_string(),
-                    timestamp: Utc::now(),
-                    event_type: "".to_string(),
-                    severity: EventSeverity::Critical,
-                    node_id: "".to_string(),
-                    node_alias: Some("".to_string()),
-                    data: serde_json::json!({
-                        "preimage": preimage,
-                        "payment_hash": hash,
-                    })
-                    .as_object()
-                    .unwrap()
-                    .clone()
-                    .into_iter()
-                    .collect(),
-                },
-                LNDEvent::InvoiceSettled {
-                    preimage,
-                    hash,
-                    value_msat,
-                    state,
-                    memo,
-                    creation_date,
-                } => Event {
-                    id: "".to_string(),
-                    timestamp: Utc::now(),
-                    event_type: "".to_string(),
-                    severity: EventSeverity::Critical,
-                    node_id: "".to_string(),
-                    node_alias: Some("".to_string()),
-                    data: serde_json::json!({
-                        "preimage": preimage,
-                        "payment_hash": hash,
-                    })
-                    .as_object()
-                    .unwrap()
-                    .clone()
-                    .into_iter()
-                    .collect(),
-                },
-                LNDEvent::InvoiceCancelled {
-                    preimage,
-                    hash,
-                    value_msat,
-                    state,
-                    memo,
-                    creation_date,
-                } => Event {
-                    id: "".to_string(),
-                    timestamp: Utc::now(),
-                    event_type: "".to_string(),
-                    severity: EventSeverity::Critical,
-                    node_id: "".to_string(),
-                    node_alias: Some("".to_string()),
-                    data: serde_json::json!({
-                        "preimage": preimage,
-                        "payment_hash": hash,
-                    })
-                    .as_object()
-                    .unwrap()
-                    .clone()
-                    .into_iter()
-                    .collect(),
-                },
-                LNDEvent::InvoiceAccepted {
-                    preimage,
-                    hash,
-                    value_msat,
-                    state,
-                    memo,
-                    creation_date,
-                } => Event {
-                    id: "".to_string(),
-                    timestamp: Utc::now(),
-                    event_type: "".to_string(),
-                    severity: EventSeverity::Critical,
-                    node_id: "".to_string(),
-                    node_alias: Some("".to_string()),
-                    data: serde_json::json!({
-                        "preimage": preimage,
-                        "payment_hash": hash,
-                    })
-                    .as_object()
-                    .unwrap()
-                    .clone()
-                    .into_iter()
-                    .collect(),
-                },
-            };
-            event
-        }
-        NodeSpecificEvent::CLN(cln_event) => {
-            let event = match cln_event {
-                CLNEvent::ChannelOpened {} => Event {
-                    id: todo!(),
-                    timestamp: todo!(),
-                    event_type: todo!(),
-                    severity: todo!(),
-                    node_id: todo!(),
-                    node_alias: todo!(),
-                    data: todo!(),
-                },
-            };
-            event
-        }
-    };
-    Some(event)
-}
-
-#[derive(Clone)]
-pub struct EventDispatcher {
+pub struct EventHandler {
     pool: Option<sqlx::SqlitePool>,
     account_id: Option<String>,
     user_id: Option<String>,
@@ -308,15 +119,24 @@ pub struct EventDispatcher {
     node_alias: Option<String>,
 }
 
-impl EventDispatcher {
+impl EventHandler {
     pub fn new() -> Self {
-        EventDispatcher {
+        EventHandler {
             pool: None,
             account_id: None,
             user_id: None,
             node_id: None,
             node_alias: None,
         }
+    }
+
+    pub fn start_receiving(self, mut receiver: mpsc::Receiver<NodeSpecificEvent>) {
+        let handler = self.clone();
+        tokio::spawn(async move {
+            while let Some(raw_event) = receiver.recv().await {
+                handler.dispatch_event(raw_event).await;
+            }
+        });
     }
 
     pub fn with_context(
@@ -326,7 +146,7 @@ impl EventDispatcher {
         node_id: String,
         node_alias: String,
     ) -> Self {
-        EventDispatcher {
+        EventHandler {
             pool: Some(pool),
             account_id: Some(account_id),
             user_id: Some(user_id),
@@ -368,22 +188,4 @@ impl EventDispatcher {
             tracing::debug!("Skipping event dispatch - no database context available");
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum EventSeverity {
-    Info,
-    Warning,
-    Critical,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Event {
-    pub id: String,
-    pub timestamp: DateTime<Utc>,
-    pub event_type: String,
-    pub severity: EventSeverity,
-    pub node_id: String,
-    pub node_alias: Option<String>,
-    pub data: HashMap<String, serde_json::Value>,
 }

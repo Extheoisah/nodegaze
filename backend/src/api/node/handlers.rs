@@ -3,9 +3,7 @@ use crate::api::common::ApiResponse;
 use crate::database::models::CreateCredential;
 use crate::errors::LightningError;
 use crate::repositories::credential_repository::CredentialRepository;
-use crate::services::event_manager::{
-    EventCollector, EventDispatcher, EventProcessor, NodeSpecificEvent,
-};
+use crate::services::event_manager::{EventCollector, EventHandler, NodeSpecificEvent};
 use crate::services::node_manager::LightningClient;
 use crate::services::node_manager::{
     ClnConnection, ClnNode, ConnectionRequest, LndConnection, LndNode,
@@ -56,25 +54,23 @@ pub async fn authenticate_node(
                     collector.start_sending(info.pubkey, lnd_node_).await;
 
                     // Start processing events with database context
-                    let dispatcher = if let Some(user_claims) = &claims {
+                    let handler = if let Some(user_claims) = &claims {
                         tracing::info!(
-                            "Creating dispatcher with database context for user: {}",
+                            "Creating handler with database context for user: {}",
                             user_claims.sub
                         );
-                        Arc::new(EventDispatcher::with_context(
+                        EventHandler::with_context(
                             pool.clone(),
                             user_claims.account_id.clone(),
                             user_claims.sub.clone(),
                             info.pubkey.to_string(),
                             info.alias.clone(),
-                        ))
+                        )
                     } else {
-                        tracing::info!("Creating dispatcher without database context");
-                        Arc::new(EventDispatcher::new())
+                        tracing::info!("Creating handler without database context");
+                        EventHandler::new()
                     };
-
-                    let processor = EventProcessor::new(dispatcher);
-                    processor.start_receiving(receiver);
+                    handler.start_receiving(receiver);
 
                     info
                 }
@@ -109,25 +105,24 @@ pub async fn authenticate_node(
                     collector.start_sending(info.pubkey, cln_node_).await;
 
                     // Start processing events with database context
-                    let dispatcher = if let Some(user_claims) = &claims {
+                    let handler = if let Some(user_claims) = &claims {
                         tracing::info!(
-                            "Creating CLN dispatcher with database context for user: {}",
+                            "Creating CLN handler with database context for user: {}",
                             user_claims.sub
                         );
-                        Arc::new(EventDispatcher::with_context(
+                        EventHandler::with_context(
                             pool.clone(),
                             user_claims.account_id.clone(),
                             user_claims.sub.clone(),
                             info.pubkey.to_string(),
                             info.alias.clone(),
-                        ))
+                        )
                     } else {
-                        tracing::info!("Creating CLN dispatcher without database context");
-                        Arc::new(EventDispatcher::new())
+                        tracing::info!("Creating CLN handler without database context");
+                        EventHandler::new()
                     };
 
-                    let processor = EventProcessor::new(dispatcher);
-                    processor.start_receiving(receiver);
+                    handler.start_receiving(receiver);
 
                     info
                 }
