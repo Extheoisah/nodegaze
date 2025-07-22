@@ -65,7 +65,7 @@ pub enum CLNEvent {
     ChannelOpened {},
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum NodeSpecificEvent {
     LND(LNDEvent),
     CLN(CLNEvent),
@@ -110,6 +110,7 @@ impl EventCollector {
     }
 }
 
+#[derive(Clone)]
 pub struct EventProcessor {
     dispatcher: Arc<EventDispatcher>,
 }
@@ -123,13 +124,13 @@ impl EventProcessor {
         let dispatcher_clone = self.dispatcher.clone();
         tokio::spawn(async move {
             while let Some(raw_event) = receiver.recv().await {
-                match transform_and_enrich_event(raw_event).await {
-                    Some(event) => {
-                        println!("Processed event: {:?}", event);
-                        dispatcher_clone.dispatch_event(event).await;
+                match transform_and_enrich_event(raw_event.clone()).await {
+                    Some(_event) => {
+                        // Use the raw event for processing since it has the actual data
+                        dispatcher_clone.dispatch_event(raw_event).await;
                     }
                     None => {
-                        eprintln!("Failed to transform or enrich event.");
+                        tracing::error!("Failed to transform or enrich event: {:?}", raw_event);
                     }
                 }
             }
@@ -298,11 +299,75 @@ async fn transform_and_enrich_event(raw_event: NodeSpecificEvent) -> Option<Even
     Some(event)
 }
 
-#[derive(Clone, Copy)]
-pub struct EventDispatcher {}
+#[derive(Clone)]
+pub struct EventDispatcher {
+    pool: Option<sqlx::SqlitePool>,
+    account_id: Option<String>,
+    user_id: Option<String>,
+    node_id: Option<String>,
+    node_alias: Option<String>,
+}
 
 impl EventDispatcher {
-    async fn dispatch_event(self, event: Event) {}
+    pub fn new() -> Self {
+        EventDispatcher {
+            pool: None,
+            account_id: None,
+            user_id: None,
+            node_id: None,
+            node_alias: None,
+        }
+    }
+
+    pub fn with_context(
+        pool: sqlx::SqlitePool,
+        account_id: String,
+        user_id: String,
+        node_id: String,
+        node_alias: String,
+    ) -> Self {
+        EventDispatcher {
+            pool: Some(pool),
+            account_id: Some(account_id),
+            user_id: Some(user_id),
+            node_id: Some(node_id),
+            node_alias: Some(node_alias),
+        }
+    }
+
+    pub async fn dispatch_event(&self, raw_event: NodeSpecificEvent) {
+        // Only process if we have database context
+        if let (Some(pool), Some(account_id), Some(user_id), Some(node_id), Some(node_alias)) = (
+            &self.pool,
+            &self.account_id,
+            &self.user_id,
+            &self.node_id,
+            &self.node_alias,
+        ) {
+            let event_service = crate::services::event_service::EventService::new();
+
+            if let Err(e) = event_service
+                .process_lightning_event(
+                    pool,
+                    account_id.clone(),
+                    user_id.clone(),
+                    node_id.clone(),
+                    node_alias.clone(),
+                    &raw_event,
+                )
+                .await
+            {
+                tracing::error!(
+                    "Failed to process lightning event for node {}: {}. Event: {:?}",
+                    node_id,
+                    e,
+                    raw_event
+                );
+            }
+        } else {
+            tracing::debug!("Skipping event dispatch - no database context available");
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

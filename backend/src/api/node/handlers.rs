@@ -55,7 +55,23 @@ pub async fn authenticate_node(
 
                     collector.start_sending(info.pubkey, lnd_node_).await;
 
-                    let dispatcher = Arc::new(EventDispatcher {});
+                    // Start processing events with database context
+                    let dispatcher = if let Some(user_claims) = &claims {
+                        tracing::info!(
+                            "Creating dispatcher with database context for user: {}",
+                            user_claims.sub
+                        );
+                        Arc::new(EventDispatcher::with_context(
+                            pool.clone(),
+                            user_claims.account_id.clone(),
+                            user_claims.sub.clone(),
+                            info.pubkey.to_string(),
+                            info.alias.clone(),
+                        ))
+                    } else {
+                        tracing::info!("Creating dispatcher without database context");
+                        Arc::new(EventDispatcher::new())
+                    };
 
                     let processor = EventProcessor::new(dispatcher);
                     processor.start_receiving(receiver);
@@ -81,7 +97,39 @@ pub async fn authenticate_node(
             match ClnNode::new(cln_conn.clone()).await {
                 Ok(cln_node) => {
                     tracing::info!("CLN node authenticated: {:?}", cln_node.info);
-                    cln_node.info
+
+                    let info = cln_node.info.clone();
+
+                    let (sender, receiver) = mpsc::channel::<NodeSpecificEvent>(32);
+
+                    let collector = EventCollector::new(sender);
+                    let cln_node_: Arc<Mutex<Box<dyn LightningClient + Send + Sync + 'static>>> =
+                        Arc::new(Mutex::new(Box::new(cln_node)));
+
+                    collector.start_sending(info.pubkey, cln_node_).await;
+
+                    // Start processing events with database context
+                    let dispatcher = if let Some(user_claims) = &claims {
+                        tracing::info!(
+                            "Creating CLN dispatcher with database context for user: {}",
+                            user_claims.sub
+                        );
+                        Arc::new(EventDispatcher::with_context(
+                            pool.clone(),
+                            user_claims.account_id.clone(),
+                            user_claims.sub.clone(),
+                            info.pubkey.to_string(),
+                            info.alias.clone(),
+                        ))
+                    } else {
+                        tracing::info!("Creating CLN dispatcher without database context");
+                        Arc::new(EventDispatcher::new())
+                    };
+
+                    let processor = EventProcessor::new(dispatcher);
+                    processor.start_receiving(receiver);
+
+                    info
                 }
                 Err(e) => {
                     tracing::error!("Failed to authenticate CLN node: {}", e);
