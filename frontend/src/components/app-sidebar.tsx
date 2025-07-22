@@ -87,7 +87,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar {...props}>
       <SidebarContent className="px-4">
-        <section className="flex gap-5 mt-8 items-center justify-left">
+        <section className="flex gap-5 my-7 items-center justify-left">
           <Logo className="w-10 h-10" />
           <span className="text-[25.83px] font-semibold text-blue-primary font-lato">
             Nodegaze

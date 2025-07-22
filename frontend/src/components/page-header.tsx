@@ -1,11 +1,25 @@
-import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { ChevronDown, Calendar } from "lucide-react"
+"use client";
+
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ChevronDown, Calendar } from "lucide-react";
+import { usePathname } from "next/navigation";
 
 export function PageHeader() {
+  const pathname = usePathname();
+  const firstLetter = pathname.split("/").pop()?.charAt(0)?.toUpperCase();
+  const rest = pathname.split("/").pop()?.slice(1);
+  const pageTitle = firstLetter ? firstLetter + rest : "";
+  if (!pageTitle) return null;
+
   return (
-    <div className="flex items-center justify-between">
-      <h1 className="text-3xl font-bold">Overview</h1>
+    <div className="flex items-center justify-between mb-2 mt-4 font-host-grotesk text-grey-dark">
+      <h1 className="text-3xl font-semibold">{pageTitle}</h1>
 
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2 text-sm">
@@ -53,5 +67,5 @@ export function PageHeader() {
         </DropdownMenu>
       </div>
     </div>
-  )
+  );
 }
