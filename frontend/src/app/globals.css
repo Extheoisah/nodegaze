@@ -97,6 +97,8 @@
   --color-grey-primary: oklch(0.3695 0.0381 260.5);
   --color-grey-dark: oklch(0.2128 0.0327 260.3);
   --color-cerulean-blue: #EFF6FF;
+  --color-cerulean-blue-accent: #DCEAFD;
+  --color-maya-blue: #355873;
   --color-success-green-background: #E7F6EC;
   --color-success-green: #33CE6D;
 }

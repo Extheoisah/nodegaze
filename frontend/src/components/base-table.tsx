@@ -24,10 +24,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import Link from "next/link";
 
 const data: Channel[] = [
   {
-    id: "90258lx1823x0",
+    id: "022047c869809c747ae69603c4ed178c4c3cb899c8e5370a5d8684b0e2b508e058",
     channelName: "90258lx1823x0",
     state: "active",
     inboundBalance: 5000000,
@@ -36,7 +37,7 @@ const data: Channel[] = [
     uptime: "Very Good",
   },
   {
-    id: "45789abc4567x1",
+    id: "022047c869809c747ae69603c4ed178c4c3cb899c8e5370a5d8684b0e2b508e058",
     channelName: "45789abc4567x1",
     state: "active",
     inboundBalance: 3500000,
@@ -45,7 +46,7 @@ const data: Channel[] = [
     uptime: "Good",
   },
   {
-    id: "78901def7890x2",
+    id: "022047c869809c747ae69603c4ed178c4c3cb899c8e5370a5d8684b0e2b508e058",
     channelName: "78901def7890x2",
     state: "inactive",
     inboundBalance: 1200000,
@@ -54,7 +55,7 @@ const data: Channel[] = [
     uptime: "Poor",
   },
   {
-    id: "12345ghi1234x3",
+    id: "022047c869809c747ae69603c4ed178c4c3cb899c8e5370a5d8684b0e2b508e058",
     channelName: "12345ghi1234x3",
     state: "active",
     inboundBalance: 7500000,
@@ -63,7 +64,7 @@ const data: Channel[] = [
     uptime: "Very Good",
   },
   {
-    id: "67890jkl6789x4",
+    id: "022047c869809c747ae69603c4ed178c4c3cb899c8e5370a5d8684b0e2b508e058",
     channelName: "67890jkl6789x4",
     state: "pending",
     inboundBalance: 2100000,
@@ -87,11 +88,17 @@ export const columns: ColumnDef<Channel>[] = [
   {
     accessorKey: "channelName",
     header: "Channel Name",
-    cell: ({ row }) => (
-      <div className="font-normal text-grey-dark">
-        {row.getValue("channelName")}
-      </div>
-    ),
+    cell: ({ row }) => {
+      const channelId = row.original.id;
+      return (
+        <Link
+          href={`/channels/${channelId}`}
+          className="font-normal text-grey-dark hover:text-blue-primary hover:underline cursor-pointer"
+        >
+          {row.getValue("channelName")}
+        </Link>
+      );
+    },
   },
   {
     accessorKey: "state",
@@ -190,9 +197,9 @@ export const columns: ColumnDef<Channel>[] = [
       };
 
       const percentage = getProgressPercentage(uptime);
-    //   const circumference = 2 * Math.PI * 16; // radius = 16
-    //   const strokeDasharray = circumference;
-    //   const strokeDashoffset = circumference - (percentage / 100) * circumference;
+      //   const circumference = 2 * Math.PI * 16; // radius = 16
+      //   const strokeDasharray = circumference;
+      //   const strokeDashoffset = circumference - (percentage / 100) * circumference;
 
       return (
         <div className="flex items-center gap-3">
@@ -200,10 +207,7 @@ export const columns: ColumnDef<Channel>[] = [
             {uptime}
           </span>
           <div className="relative w-8 h-8">
-            <svg
-              className="w-8 h-8 transform -rotate-90"
-              viewBox="0 0 36 36"
-            >
+            <svg className="w-8 h-8 transform -rotate-90" viewBox="0 0 36 36">
               {/* Background circle */}
               <path
                 d="M18 2.0845
@@ -234,11 +238,19 @@ export const columns: ColumnDef<Channel>[] = [
     id: "actions",
     header: "",
     enableHiding: false,
-    cell: () => (
-      <Button variant="outline" className="h-8 w-8 p-0 text-grey-dark rounded-[8px]">
-        <ChevronDown className="h-4 w-4 rotate-[-90deg]" />
-      </Button>
-    ),
+    cell: ({ row }) => {
+      const channelId = row.original.id;
+      return (
+        <Link href={`/channels/${channelId}`} className="cursor-pointer">
+          <Button
+            variant="outline"
+            className="h-8 w-8 p-0 text-grey-dark rounded-[8px] cursor-pointer"
+          >
+            <ChevronDown className="h-4 w-4 rotate-[-90deg]" />
+          </Button>
+        </Link>
+      );
+    },
   },
 ];
 
@@ -276,7 +288,9 @@ export function DataTable() {
             <TableRow className="border-b">
               <TableHead colSpan={columns.length} className="py-6 px-4">
                 <div className="flex items-center gap-3">
-                  <h1 className="text-2xl font-medium text-grey-dark">All Channels</h1>
+                  <h1 className="text-2xl font-medium text-grey-dark">
+                    All Channels
+                  </h1>
                   <span className="bg-cerulean-blue text-grey-dark px-3 py-1 rounded-2xl text-sm font-medium">
                     {data.length}
                   </span>
@@ -288,7 +302,10 @@ export function DataTable() {
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
                   return (
-                    <TableHead key={header.id} className="text-grey-table-header font-medium text-sm py-3 px-4">
+                    <TableHead
+                      key={header.id}
+                      className="text-grey-table-header font-medium text-sm py-3 px-4"
+                    >
                       {header.isPlaceholder
                         ? null
                         : flexRender(
@@ -309,7 +326,10 @@ export function DataTable() {
                   data-state={row.getIsSelected() && "selected"}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="px-4 py-6 text-sm font-normal">
+                    <TableCell
+                      key={cell.id}
+                      className="px-4 py-6 text-sm font-normal"
+                    >
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext()
