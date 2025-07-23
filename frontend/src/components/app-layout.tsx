@@ -15,7 +15,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       <AppSidebar />
       <SidebarInset>
         <DashboardHeader />
-        <div className="flex flex-1 flex-col gap-6 p-6 font-host-grotesk text-sidebar">
+        <div className="flex flex-1 flex-col gap-6 p-6 font-clash-grotesk text-sidebar">
           {children}
         </div>
       </SidebarInset>

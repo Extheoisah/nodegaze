@@ -96,7 +96,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         {navigationItems.map((section, index) => (
           <SidebarGroup key={index}>
             {section.title && (
-              <SidebarGroupLabel className="text-sm font-medium text-grey-accent font-host-grotesk">
+              <SidebarGroupLabel className="text-sm font-medium text-grey-accent font-clash-grotesk">
                 {section.title}
               </SidebarGroupLabel>
             )}
@@ -109,7 +109,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       <SidebarMenuButton
                         asChild
                         isActive={isActive}
-                        className={`text-sm h-11 font-medium font-host-grotesk`}
+                        className={`text-sm h-11 font-medium font-clash-grotesk`}
                       >
                         <a
                           href={item.url}
@@ -121,7 +121,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                           </div>
                           {item.count && (
                             <span
-                              className={`bg-grey-sub-background rounded-xl px-2 py-1 text-xs font-host-grotesk font-bold text-grey-primary`}
+                              className={`bg-grey-sub-background rounded-xl px-2 py-1 text-xs font-clash-grotesk font-medium text-grey-primary`}
                             >
                               {item.count}
                             </span>
