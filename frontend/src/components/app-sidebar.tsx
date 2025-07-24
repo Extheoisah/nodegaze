@@ -75,7 +75,6 @@ const navigationItems: NavigationSection[] = [
         title: "Invoices",
         url: "/invoices",
         icon: Binoculars,
-        count: 10,
       },
     ],
   },
@@ -110,10 +109,20 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                         asChild
                         isActive={isActive}
                         className={`text-sm h-11 font-medium font-clash-grotesk`}
+                        // disable the button if the url is /payments, /invoices, /nodes, /channels, /events
+                        disabled={
+                          item.url === "/payments" || item.url === "/invoices"
+                        }
                       >
                         <a
                           href={item.url}
-                          className="flex items-center justify-between"
+                          className={`flex items-center justify-between ${
+                            item.url === "/payments" ||
+                            item.url === "/invoices" ||
+                            item.url === "/nodes"
+                              ? "opacity-50 cursor-not-allowed"
+                              : ""
+                          }`}
                         >
                           <div className="flex items-center gap-2">
                             <item.icon className="h-4 w-4" />

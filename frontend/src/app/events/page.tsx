@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { AppLayout } from "@/components/app-layout";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,33 +22,36 @@ import {
 import { ChevronDown, ChevronUp, Plus } from "lucide-react";
 import { NotificationDialog } from "@/components/notification-dialog";
 
-const endpointsData = [
-  {
-    id: 1,
-    url: "https://api.your-application.com/webhooks/receive_data_12345",
-    successRate: 0,
-    failRate: 0,
-  },
-  // Add more mock data for pagination
-  ...Array.from({ length: 29 }, (_, i) => ({
-    id: i + 2,
-    url: `https://api.example${i + 2}.com/webhooks/endpoint_${i + 2}`,
-    successRate: Math.floor(Math.random() * 100),
-    failRate: Math.floor(Math.random() * 100),
-  })),
-];
+interface Notification {
+  id: string;
+  account_id: string;
+  user_id: string;
+  name: string;
+  notification_type: "Webhook" | "Discord";
+  url: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  is_deleted: boolean;
+  deleted_at: string | null;
+}
 
 export default function EventsPage() {
+  const router = useRouter();
   const [isNotificationSettingsOpen, setIsNotificationSettingsOpen] =
     useState(true);
   const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedEvent, setSelectedEvent] = useState<string>("");
-  const itemsPerPage = 1;
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
+  const [notificationsError, setNotificationsError] = useState<string>("");
+  const itemsPerPage = 5;
 
-  const totalPages = Math.ceil(endpointsData.length / itemsPerPage);
+  const totalPages = Math.ceil(notifications.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const currentData = endpointsData.slice(
+  const currentData = notifications.slice(
     startIndex,
     startIndex + itemsPerPage
   );
@@ -68,14 +72,131 @@ export default function EventsPage() {
     return pages;
   };
 
-  const handleSubmit = (data: {
+  const fetchNotifications = async () => {
+    if (status === "unauthenticated") {
+      router.push("/login");
+      return;
+    }
+
+    if (status === "loading") {
+      return; // Wait for session to load
+    }
+
+    setIsLoadingNotifications(true);
+    setNotificationsError("");
+
+    try {
+      const response = await fetch("/api/notifications", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        // If unauthorized, redirect to login
+        if (response.status === 401) {
+          router.push("/login");
+          return;
+        }
+        throw new Error(result.error || "Failed to fetch notifications");
+      }
+
+      if (result.success && result.data) {
+        setNotifications(result.data);
+      } else {
+        setNotifications([]);
+      }
+    } catch (error) {
+      console.error("Failed to fetch notifications:", error);
+      setNotificationsError(
+        error instanceof Error ? error.message : "Failed to load notifications"
+      );
+    } finally {
+      setIsLoadingNotifications(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+    // we don't need to include fetchNotifications in the dependency array because of a circular dependency
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]);
+
+  const handleSubmit = async (data: {
     eventType: string;
     url: string;
     secret?: string;
     description: string;
   }) => {
-    // Handle form submission here
-    console.log(data);
+    // Check if user is authenticated
+    if (status === "unauthenticated") {
+      router.push("/login");
+      return;
+    }
+
+    if (status === "loading") {
+      return; // Wait for session to load
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // Map eventType to the expected notification_type format
+      const notification_type =
+        data.eventType === "webhook" ? "Webhook" : "Discord";
+
+      const response = await fetch("/api/notifications", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: data.description || `${notification_type} Alert`,
+          notification_type: notification_type,
+          url: data.url,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        // If unauthorized, redirect to login
+        if (response.status === 401) {
+          router.push("/login");
+          return;
+        }
+        throw new Error(
+          result.error ||
+            `Failed to create ${notification_type.toLowerCase()} notification`
+        );
+      }
+
+      // Show success message
+      alert(
+        result.message ||
+          `${notification_type} notification created successfully!`
+      );
+
+      // Reset the selected event
+      setSelectedEvent("");
+
+      // Refresh the notifications list
+      fetchNotifications();
+
+      console.log("Notification created:", result.data);
+    } catch (error) {
+      console.error("Failed to create notification:", error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Failed to create notification. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -121,6 +242,7 @@ export default function EventsPage() {
                   <NotificationDialog
                     selectedEvent={selectedEvent}
                     onSubmit={handleSubmit}
+                    isLoading={isSubmitting}
                   />
                 </div>
               </div>
@@ -134,7 +256,7 @@ export default function EventsPage() {
             <div className="flex items-center gap-3">
               <h2 className="text-lg font-medium text-grey-dark">Endpoints</h2>
               <span className="bg-cerulean-blue text-grey-dark px-2 py-1 rounded-xl text-sm font-medium">
-                {endpointsData.length}
+                {notifications.length}
               </span>
             </div>
           </div>
@@ -144,52 +266,83 @@ export default function EventsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-grey-table-header font-medium text-sm py-3 px-6">
+                    Name
+                  </TableHead>
+                  <TableHead className="text-grey-table-header font-medium text-sm py-3 px-6">
+                    Type
+                  </TableHead>
+                  <TableHead className="text-grey-table-header font-medium text-sm py-3 px-6">
                     URL
                   </TableHead>
                   <TableHead className="text-grey-table-header font-medium text-sm py-3 px-6">
-                    Success Rate
-                  </TableHead>
-                  <TableHead className="text-grey-table-header font-medium text-sm py-3 px-6">
-                    Fail Rate
+                    Status
                   </TableHead>
                   <TableHead className="w-12"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {currentData.map((endpoint) => (
-                  <TableRow key={endpoint.id}>
-                    <TableCell className="px-6 py-4 text-sm text-grey-dark font-mono">
-                      {endpoint.url}
-                    </TableCell>
-                    <TableCell className="px-6 py-4 text-sm">
-                      <span
-                        className={`font-medium ${
-                          endpoint.successRate === 0
-                            ? "text-red-500"
-                            : "text-success-green"
-                        }`}
-                      >
-                        {endpoint.successRate}%
-                      </span>
-                    </TableCell>
-                    <TableCell className="px-6 py-4 text-sm">
-                      <span
-                        className={`font-medium ${
-                          endpoint.failRate === 0
-                            ? "text-red-500"
-                            : "text-success-green"
-                        }`}
-                      >
-                        {endpoint.failRate}%
-                      </span>
-                    </TableCell>
-                    <TableCell className="px-6 py-4">
-                      <Button variant="ghost" className="h-8 w-8 p-0">
-                        <ChevronDown className="h-4 w-4 rotate-[-90deg]" />
-                      </Button>
+                {isLoadingNotifications ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="px-6 py-8 text-center">
+                      <div className="flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
+                        <span className="ml-2 text-grey-accent">
+                          Loading notifications...
+                        </span>
+                      </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : notificationsError ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={5}
+                      className="px-6 py-8 text-center text-red-500"
+                    >
+                      {notificationsError}
+                    </TableCell>
+                  </TableRow>
+                ) : currentData.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={5}
+                      className="px-6 py-8 text-center text-grey-accent"
+                    >
+                      No notifications configured yet.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  currentData.map((notification) => (
+                    <TableRow key={notification.id}>
+                      <TableCell className="px-6 py-4 text-sm text-grey-dark font-medium">
+                        {notification.name}
+                      </TableCell>
+                      <TableCell className="px-6 py-4 text-sm">
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          {notification.notification_type}
+                        </span>
+                      </TableCell>
+                      <TableCell className="px-6 py-4 text-sm text-grey-dark font-mono break-all">
+                        {notification.url}
+                      </TableCell>
+                      <TableCell className="px-6 py-4 text-sm">
+                        <span
+                          className={`font-medium ${
+                            notification.is_active
+                              ? "text-success-green"
+                              : "text-red-500"
+                          }`}
+                        >
+                          {notification.is_active ? "Active" : "Inactive"}
+                        </span>
+                      </TableCell>
+                      <TableCell className="px-6 py-4">
+                        <Button variant="ghost" className="h-8 w-8 p-0">
+                          <ChevronDown className="h-4 w-4 rotate-[-90deg]" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </div>

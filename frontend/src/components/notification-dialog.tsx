@@ -20,11 +20,13 @@ interface NotificationDialogProps {
     secret?: string;
     description: string;
   }) => void;
+  isLoading?: boolean;
 }
 
 export function NotificationDialog({
   selectedEvent,
   onSubmit,
+  isLoading = false,
 }: NotificationDialogProps) {
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
@@ -107,6 +109,7 @@ export function NotificationDialog({
               onChange={(e) => setWebhookUrl(e.target.value)}
               placeholder="https://api.your-application.com/webhooks/receive_data_12345"
               className="mt-1 h-12"
+              disabled={isLoading}
             />
           </div>
 
@@ -122,6 +125,7 @@ export function NotificationDialog({
                 placeholder="Enter webhook secret"
                 type="password"
                 className="mt-1"
+                disabled={isLoading}
               />
             </div>
           )}
@@ -134,7 +138,8 @@ export function NotificationDialog({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="This is a description for this webhook URL"
-              className="mt-1 w-full min-h-[100px] px-3 py-2 text-sm border border-input rounded-md bg-background ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 resize-none"
+              className="mt-1 w-full min-h-[100px] px-3 py-2 text-sm border border-input rounded-md bg-background ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isLoading}
             />
           </div>
 
@@ -147,13 +152,21 @@ export function NotificationDialog({
                 : "cursor-not-allowed bg-grey-accent"
             }`}
             disabled={
+              isLoading ||
               !(
                 (selectedEvent === "webhook" && webhookUrl && webhookSecret) ||
                 (selectedEvent === "discord" && webhookUrl)
               )
             }
           >
-            Connect
+            {isLoading ? (
+              <div className="flex items-center gap-2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                Creating...
+              </div>
+            ) : (
+              "Connect"
+            )}
           </Button>
         </div>
       </DialogContent>

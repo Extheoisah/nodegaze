@@ -1,7 +1,8 @@
 import NextAuth from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import type { NextAuthOptions } from "next-auth";
 
-export default NextAuth({
+export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
       name: "credentials",
@@ -151,4 +152,6 @@ export default NextAuth({
     strategy: "jwt",
   },
   debug: process.env.NODE_ENV === "development",
-});
+};
+
+export default NextAuth(authOptions);
