@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table";
 import { ChevronDown, ChevronUp, Plus } from "lucide-react";
 import { NotificationDialog } from "@/components/notification-dialog";
+import { useSession } from "next-auth/react";
 
 interface Notification {
   id: string;
@@ -38,6 +39,9 @@ interface Notification {
 
 export default function EventsPage() {
   const router = useRouter();
+  const { data: session, status } = useSession();
+  console.log("Session:", session);
+  console.log("Status:", status);
   const [isNotificationSettingsOpen, setIsNotificationSettingsOpen] =
     useState(true);
   const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
@@ -94,6 +98,7 @@ export default function EventsPage() {
       });
 
       const result = await response.json();
+      console.log("Notifications result:", result);
 
       if (!response.ok) {
         // If unauthorized, redirect to login
@@ -120,10 +125,13 @@ export default function EventsPage() {
   };
 
   useEffect(() => {
-    fetchNotifications();
-    // we don't need to include fetchNotifications in the dependency array because of a circular dependency
+    if (status === "authenticated") {
+      fetchNotifications();
+    } else if (status === "unauthenticated") {
+      router.push("/login");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router]);
+  }, [status]);
 
   const handleSubmit = async (data: {
     eventType: string;
@@ -312,7 +320,11 @@ export default function EventsPage() {
                   </TableRow>
                 ) : (
                   currentData.map((notification) => (
-                    <TableRow key={notification.id}>
+                    <TableRow 
+                      key={notification.id}
+                      className="cursor-pointer hover:bg-gray-50"
+                      onClick={() => router.push(`/events/${notification.id}`)}
+                    >
                       <TableCell className="px-6 py-4 text-sm text-grey-dark font-medium">
                         {notification.name}
                       </TableCell>
