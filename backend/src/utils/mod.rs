@@ -8,12 +8,16 @@ use bitcoin::secp256k1::PublicKey;
 use bitcoin::{Address, OutPoint, ScriptBuf};
 use expanduser::expanduser;
 use lightning::ln::features::NodeFeatures;
-use lightning::ln::{PaymentHash, PaymentPreimage, PaymentSecret};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fmt;
 use std::fmt::{Display, Formatter};
+use std::str::FromStr;
+use std::time::SystemTime;
 
 pub mod crypto;
 pub mod generate_random_string;
+pub mod handlers_common;
 pub mod jwt;
 
 /// Represents a node id, either by its public key or alias.
@@ -95,55 +99,96 @@ impl Display for NodeInfo {
     }
 }
 
-/// Represents a connected Lightning Network channel.
-#[derive(Debug)]
-pub struct Channel {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ChannelDetails {
     pub channel_id: ShortChannelID,
-    pub pubkeys: ChannelPublicKey,
-    pub capacity_sat: u64,
     pub local_balance_sat: u64,
     pub remote_balance_sat: u64,
-    pub status: ChannelStatus,
+    pub capacity_sat: u64,
     pub active: bool,
     pub private: bool,
+    pub remote_pubkey: PublicKey,
+    pub commit_fee_sat: u64,
+    pub local_chan_reserve_sat: u64,
+    pub remote_chan_reserve_sat: u64,
+    pub num_updates: u64,
+    pub total_satoshis_sent: u64,
+    pub total_satoshis_received: u64,
+    pub channel_age_blocks: Option<u32>,
+    pub last_update: Option<SystemTime>,
+    pub opening_cost_sat: Option<u64>,
+    pub initiator: bool,
+    pub channel_point: OutPoint,
+    pub node1_policy: Option<NodePolicy>,
+    pub node2_policy: Option<NodePolicy>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ChannelSummary {
+    pub chan_id: ShortChannelID,
+    pub alias: Option<String>,
+    pub channel_state: ChannelState,
+    pub private: bool,
+    pub remote_balance: u64,
+    pub local_balance: u64,
+    pub capacity: u64,
+    pub creation_date: Option<i64>,
+    pub uptime: Option<u64>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CustomInvoice {
+    pub memo: String,
+    pub payment_hash: String,
+    pub payment_preimage: String,
+    pub value: u64,
+    pub value_msat: u64,
+    pub settled: Option<bool>,
+    pub creation_date: Option<i64>,
+    pub settle_date: Option<i64>,
+    pub payment_request: String,
+    pub expiry: Option<u64>,
+    pub state: InvoiceStatus,
+    pub is_keysend: Option<bool>,
+    pub is_amp: Option<bool>,
+    pub payment_addr: Option<String>,
+    pub htlcs: Option<Vec<InvoiceHtlc>>,
+    pub features: Option<HashMap<u32, Feature>>,
+}
+
+/// Represents a node's routing policy for forwarding payments
+#[derive(Debug, Serialize, Deserialize)]
+pub struct NodePolicy {
+    pub pubkey: PublicKey,
+    pub fee_base_msat: u64,
+    pub fee_rate_milli_msat: u64,
+    pub min_htlc_msat: u64,
+    pub max_htlc_msat: Option<u64>,
+    pub time_lock_delta: u16,
+    pub disabled: bool,
+    pub last_update: Option<SystemTime>,
+}
+
+impl Display for NodePolicy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Policy(pubkey: {}, fee: {}+{}ppm, min_htlc: {}msat{})",
+            self.pubkey,
+            self.fee_base_msat,
+            self.fee_rate_milli_msat,
+            self.min_htlc_msat,
+            match self.max_htlc_msat {
+                Some(max) => format!(", max_htlc: {}msat", max),
+                None => String::new(),
+            }
+        )
+    }
 }
 
 /// Represents a short channel ID.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ShortChannelID(u64);
-
-/// Represents key and metadata for a Lightning Network channel.
-#[derive(Debug)]
-pub struct ChannelPublicKey {
-    pub payment_point: PublicKey,
-    pub initiator: bool,
-    pub channel_point: OutPoint,
-}
-
-/// Represents a Hashed Timelock Contract (HTLC) for an invoice.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Htlc {
-    amount_msat: u64,
-    cltv_expiry: u32,
-}
-
-/// Represents a Lightning Network invoice for receiving payments.
-#[derive(Debug)]
-pub struct Invoice {
-    pub payment_hash: PaymentHash,
-    pub payment_preimage: Option<PaymentPreimage>,
-    pub payment_secret: Option<PaymentSecret>,
-    pub payment_request: String,
-    pub memo: Option<String>,
-    pub value_sat: u64,
-    pub amt_paid_sat: Option<u64>,
-    pub description_hash: Option<String>,
-    pub status: InvoiceStatus,
-    pub creation_date: u64,
-    pub settle_date: Option<u64>,
-    pub expiry: u64,
-    pub htlcs: Vec<Htlc>,
-}
+#[derive(Debug, Clone, Serialize, Copy, Deserialize)]
+pub struct ShortChannelID(pub u64);
 
 /// Represents a log entry from the Lightning Network node.
 #[derive(Debug, Serialize, Deserialize)]
@@ -174,71 +219,109 @@ pub struct NodeMetrics {
 }
 
 /// Represents a Lightning Network payment initiated or received by the node.
-#[derive(Debug)]
-pub struct Payment {
-    pub payment_hash: PaymentHash,
-    pub value_sat: u64,
-    pub fee_sat: u64,
-    pub status: PaymentStatus,
-    pub creation_date: u64,
-    pub path: Vec<PublicKey>,
-    pub payment_request: Option<String>,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PaymentDetails {
+    pub state: PaymentState,
+    pub amount: u64,
+    pub routing_fee: Option<u64>,
+    pub network: Option<String>,
+    pub description: Option<String>,
+    pub creation_time: Option<SystemTime>,
+    pub invoice: Option<String>,
+    pub payment_hash: String,
+    pub destination_pubkey: Option<PublicKey>,
+    pub completed_at: Option<u64>,
+    pub htlcs: Vec<PaymentHtlc>,
 }
 
-/// Represents a connected peer in the Lightning Network.
-#[derive(Debug)]
-pub struct Peer {
-    pub pubkey: PublicKey,
-    pub address: Address,
-    pub inbound: bool,
-    pub bytes_recv: u64,
-    pub bytes_sent: u64,
-    pub ping_time: u64,
-}
-
-/// Represents an unspent transaction output (UTXO) in the node's wallet.
-#[derive(Debug)]
-pub struct UnspentOutput {
-    pub outpoint: OutPoint,
+/// Represents a Lightning Network payment initiated or received by the node.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PaymentSummary {
+    pub state: PaymentState,
     pub amount_sat: u64,
-    pub address: Address,
-    pub confirmations: u64,
-    pub script_pubkey: ScriptBuf,
-    pub witness_script: Option<ScriptBuf>,
+    pub amount_usd: u64,
+    pub routing_fee: Option<u64>,
+    pub creation_time: Option<SystemTime>,
+    pub invoice: Option<String>,
+    pub payment_hash: String,
+    pub completed_at: Option<u64>,
 }
 
-/// Represents the on-chain Bitcoin wallet balance of the Lightning node.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct WalletBalance {
-    pub total_sat: u64,
-    pub confirmed_sat: u64,
-    pub unconfirmed_sat: u64,
-    pub reserved_sat: Option<u64>,
-    pub locked_sat: Option<u64>,
+pub struct PaymentHtlc {
+    pub routes: Vec<Route>,
+    pub attempt_id: u64,
+    pub attempt_time: Option<SystemTime>,
+    pub resolve_time: Option<SystemTime>,
+    pub failure_reason: Option<String>,
+    pub failure_code: Option<u16>,
 }
 
-/// The current status of a Lightning channel.
 #[derive(Debug, Serialize, Deserialize)]
-pub enum ChannelStatus {
-    Opening,
-    Open,
-    Closing,
-    Closed,
-    ForceClosing,
-    WaitingClose,
-    Pending,
-    Inactive,
-    Unknown,
+pub struct InvoiceHtlc {
+    pub chan_id: Option<u64>,
+    pub htlc_index: Option<u64>,
+    pub amt_msat: Option<u64>,
+    pub accept_time: Option<i64>,
+    pub resolve_time: Option<i64>,
+    pub expiry_height: Option<u32>,
+    pub mpp_total_amt_msat: Option<u64>,
 }
 
-/// The status of a Lightning invoice.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Feature {
+    pub name: Option<String>,
+    pub is_known: Option<bool>,
+    pub is_required: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Route {
+    pub total_time_lock: u32,
+    pub total_fees: u64,
+    pub total_amt: u64,
+    pub hops: Vec<Hop>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Hop {
+    pub pubkey: PublicKey,
+    pub chan_id: ShortChannelID,
+    pub amount_to_forward: u64,
+    pub fee: Option<u64>,
+    pub expiry: Option<u64>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum PaymentState {
+    Inflight,
+    Failed,
+    Settled,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum PaymentType {
+    Outgoing,
+    Incoming,
+    Forwarded,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub enum InvoiceStatus {
-    Open,
     Settled,
-    Cancelled,
+    Open,
     Expired,
-    Accepted,
+    Failed,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum ChannelState {
+    Opening,  // funding tx not confirmed
+    Active,   // normal / available
+    Disabled, // temporarily disabled
+    Closing,  // cooperative or force close initiated
+    Closed,   // channel is closed
+    Failed,   // failed or on-chain resolved
 }
 
 /// The severity level of a log entry.
@@ -338,5 +421,38 @@ mod node_features_serde {
     {
         let flags = Vec::deserialize(deserializer)?;
         Ok(NodeFeatures::from_le_bytes(flags))
+    }
+}
+
+impl ShortChannelID {
+    pub fn to_u64(&self) -> u64 {
+        self.0
+    }
+}
+
+impl FromStr for ShortChannelID {
+    type Err = std::num::ParseIntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let id = s.parse::<u64>()?;
+        Ok(Self(id))
+    }
+}
+
+impl fmt::Display for ShortChannelID {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<u64> for ShortChannelID {
+    fn from(id: u64) -> Self {
+        Self(id)
+    }
+}
+
+impl From<ShortChannelID> for u64 {
+    fn from(id: ShortChannelID) -> u64 {
+        id.0
     }
 }

@@ -5,10 +5,12 @@
 //! authentication routes which are handled separately.
 
 pub mod account;
+pub mod channel;
 pub mod common;
 pub mod credential;
 pub mod event;
 pub mod invite;
+pub mod invoice;
 pub mod node;
 pub mod notification;
 pub mod payment;

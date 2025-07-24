@@ -42,6 +42,18 @@ pub enum LightningError {
     /// Error that occurred while streaming events.
     #[error("Streaming error: {0}")]
     StreamingError(String),
+    /// Error during RPC call.
+    #[error("RPC error: {0}")]
+    RpcError(String),
+    /// Channel-related error.
+    #[error("Channel error: {0}")]
+    ChannelError(String),
+    /// Generic not found error.
+    #[error("Not found: {0}")]
+    NotFound(String),
+    /// Parse error for things like pubkeys or strings.
+    #[error("Parse error: {0}")]
+    Parse(String),
 }
 
 /// Generic service error that can be used across all entities
