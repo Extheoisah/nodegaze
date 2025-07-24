@@ -77,6 +77,7 @@ impl<'a> AuthService<'a> {
         let account_id = account.id.clone();
         let _user_account_id = user.account_id.clone();
         let user_role_id = user.role_id.clone();
+        let role_access_level = user.role_access_level.clone();
 
         // Check for existing node credentials and convert them to JWT format
         let credential_repo = CredentialRepository::new(self.pool);
@@ -105,10 +106,13 @@ impl<'a> AuthService<'a> {
             user_id.clone(),
             account_id.clone(),
             role_name.clone(),
+            role_access_level.clone(),
             node_credentials,
         )?;
 
-        let refresh_token = self.jwt_utils.generate_refresh_token(user_id.clone())?;
+        let refresh_token = self
+            .jwt_utils
+            .generate_refresh_token(user_id.clone(), role_access_level.clone())?;
 
         // Check if user has credentials for the response
         let has_node_credentials = credential_repo
@@ -212,6 +216,7 @@ impl<'a> AuthService<'a> {
             claims.sub,
             claims.account_id,
             claims.role,
+            claims.role_access_level,
             Some(node_credentials),
         )?;
 
@@ -243,6 +248,7 @@ impl<'a> AuthService<'a> {
             claims.sub,
             claims.account_id,
             claims.role,
+            claims.role_access_level,
             None, // No node credentials
         )?;
 
@@ -274,6 +280,7 @@ impl<'a> AuthService<'a> {
         let user_id = user.id.clone();
         let user_account_id = user.account_id.clone();
         let user_role_id = user.role_id.clone();
+        let role_access_level = user.role_access_level.clone();
 
         // Check for existing node credentials
         let credential_repo = CredentialRepository::new(self.pool);
@@ -299,6 +306,7 @@ impl<'a> AuthService<'a> {
             user_id,
             user_account_id,
             self.get_user_role_name(&user_role_id).await?,
+            role_access_level,
             node_credentials,
         )?;
 

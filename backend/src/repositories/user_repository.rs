@@ -2,7 +2,10 @@
 //!
 //! Provides CRUD operations for system users
 
-use crate::database::models::{CreateUser, User};
+use crate::{
+    api::common::PaginationFilter,
+    database::models::{CreateUser, RoleAccessLevel, User},
+};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
@@ -36,12 +39,13 @@ impl<'a> UserRepository<'a> {
         let user = sqlx::query_as!(
             User,
             r#"
-            INSERT INTO users (id, account_id, role_id, username, password_hash, email, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO users (id, account_id, role_id, role_access_level, username, password_hash, email, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING
             id as "id!",
             account_id as "account_id!",
             role_id as "role_id!",
+            role_access_level as "role_access_level: RoleAccessLevel",
             username as "username!",
             password_hash as "password_hash!",
             email as "email!",
@@ -54,6 +58,7 @@ impl<'a> UserRepository<'a> {
             user.id,
             user.account_id,
             user.role_id,
+            user.role_access_level,
             user.username,
             user.password_hash,
             user.email,
@@ -80,6 +85,7 @@ impl<'a> UserRepository<'a> {
             id as "id!",
             account_id as "account_id!",
             role_id as "role_id!",
+            role_access_level as "role_access_level: RoleAccessLevel",
             username as "username!",
             password_hash as "password_hash!",
             email as "email!",
@@ -113,6 +119,7 @@ impl<'a> UserRepository<'a> {
             id as "id!",
             account_id as "account_id!",
             role_id as "role_id!",
+            role_access_level as "role_access_level: RoleAccessLevel",
             username as "username!",
             password_hash as "password_hash!",
             email as "email!",
@@ -146,6 +153,7 @@ impl<'a> UserRepository<'a> {
             id as "id!",
             account_id as "account_id!",
             role_id as "role_id!",
+            role_access_level as "role_access_level: RoleAccessLevel",
             username as "username!",
             password_hash as "password_hash!",
             email as "email!",
@@ -179,6 +187,7 @@ impl<'a> UserRepository<'a> {
             u.id as "id!",
             u.account_id as "account_id!",
             u.role_id as "role_id!",
+            u.role_access_level as "role_access_level: RoleAccessLevel",
             u.username as "username!",
             u.password_hash as "password_hash!",
             u.email as "email!",
@@ -277,5 +286,63 @@ impl<'a> UserRepository<'a> {
         .await?;
 
         Ok(count.count > 0)
+    }
+
+    /// Retrieves the users for a specific account.
+    ///
+    /// # Arguments
+    /// * `account_id` - Account ID (UUID format)
+    ///
+    /// # Returns
+    /// `Some(User)` if users exist for account, `None` otherwise
+    pub async fn get_users_by_account_id(
+        &self,
+        account_id: &str,
+        pagination: &PaginationFilter,
+    ) -> Result<Vec<User>> {
+       let limit = pagination.limit();
+        let offset = pagination.offset();
+
+         let users = sqlx::query_as!(
+            User,
+            r#"
+            SELECT
+            id as "id!",
+            account_id as "account_id!",
+            role_id as "role_id!",
+            role_access_level as "role_access_level: RoleAccessLevel",
+            username as "username!",
+            password_hash as "password_hash!",
+            email as "email!",
+            is_active as "is_active!",
+            created_at as "created_at!: DateTime<Utc>",
+            updated_at as "updated_at!: DateTime<Utc>",
+            is_deleted as "is_deleted!",
+            deleted_at as "deleted_at?: DateTime<Utc>"
+            FROM users
+            WHERE account_id = ? AND is_deleted = 0
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
+            "#,
+            account_id,
+            limit,
+            offset
+        )
+        .fetch_all(self.pool)
+        .await?;
+
+        Ok(users)
+    }
+
+    /// Get total count of users for an account
+    pub async fn get_users_count_by_account_id(&self, account_id: &str) -> Result<u64> {
+        let count = sqlx::query_scalar!(
+            "SELECT COUNT(*) as count FROM users WHERE account_id = ? AND is_deleted = 0",
+            account_id
+        )
+        .fetch_one(self.pool)
+        .await?;
+
+        Ok(count as u64)
     }
 }

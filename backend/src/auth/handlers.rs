@@ -174,6 +174,7 @@ pub async fn revoke_node_credentials(
         claims.sub,
         claims.account_id,
         claims.role,
+        claims.role_access_level,
         None, // No node credentials
     ) {
         Ok(token) => token,

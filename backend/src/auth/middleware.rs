@@ -4,6 +4,7 @@
 //! and enforcing user permissions across the API endpoints.
 
 use crate::api::common::ApiResponse;
+use crate::database::models::RoleAccessLevel;
 use crate::utils::jwt::JwtUtils;
 use axum::response::IntoResponse;
 use axum::{
@@ -161,3 +162,43 @@ pub async fn node_credentials_required(
 
     Ok(next.run(request).await)
 }
+
+/// Macro to generate access level middleware functions
+macro_rules! create_access_level_middleware {
+    ($fn_name:ident, $required_level:expr, $level_name:expr) => {
+        pub async fn $fn_name(mut request: Request, next: Next) -> Result<Response, Response> {
+            let claims = request.extensions().get::<crate::utils::jwt::Claims>();
+
+            let claims = match claims {
+                Some(claims) => claims,
+                None => {
+                    let error_response = ApiResponse::<()>::error(
+                        "Authentication required",
+                        "authentication_error",
+                        None,
+                    );
+                    return Err((StatusCode::UNAUTHORIZED, Json(error_response)).into_response());
+                }
+            };
+
+            if claims.role_access_level != $required_level {
+                let error_response = ApiResponse::<()>::error(
+                    format!("Access level '{}' required", $level_name),
+                    "insufficient_permissions",
+                    None,
+                );
+                return Err((StatusCode::FORBIDDEN, Json(error_response)).into_response());
+            }
+
+            Ok(next.run(request).await)
+        }
+    };
+}
+
+// Generate the access level middleware functions
+create_access_level_middleware!(require_read_access_level, RoleAccessLevel::Read, "read");
+create_access_level_middleware!(
+    require_read_write_access_level,
+    RoleAccessLevel::ReadWrite,
+    "read-write"
+);

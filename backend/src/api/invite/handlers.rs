@@ -213,31 +213,19 @@ pub async fn resend_invite(
 #[axum::debug_handler]
 pub async fn accept_invite(
     Extension(pool): Extension<SqlitePool>,
-    Extension(claims): Extension<Claims>,
     Json(accept_invite): Json<AcceptInviteRequest>,
 ) -> Result<Json<ApiResponse<User>>, (StatusCode, String)> {
     let config = Config::from_env().unwrap();
-    let user_id = claims.sub.as_str().to_string();
 
-    tracing::info!("Accepting invite for user: {}", user_id);
-
-    let user_service = UserService::new(&pool);
-    let user = user_service
-        .get_user_required(user_id.as_str())
-        .await
-        .map_err(|e| {
-            tracing::error!("User not found for ID {}: {}", user_id, e);
-            let error_response =
-                ApiResponse::<()>::error("User not found".to_string(), "user_not_found", None);
-            (
-                StatusCode::NOT_FOUND,
-                serde_json::to_string(&error_response).unwrap(),
-            )
-        })?;
+    tracing::info!("Accepting invite for token: {}", accept_invite.token);
 
     let service = InviteService::new(&pool, &config);
     let user = service.accept_invite(&accept_invite).await.map_err(|e| {
-        tracing::error!("Failed to accept invitation for user {}: {}", user_id, e);
+        tracing::error!(
+            "Failed to accept invitation for token {}: {}",
+            accept_invite.token,
+            e
+        );
         let error_response = ApiResponse::<()>::error(
             format!("Failed to accept invitation: {}", e),
             "invite_accept_error",
@@ -249,7 +237,7 @@ pub async fn accept_invite(
         )
     })?;
 
-    tracing::info!("Invite accepted successfully for user: {}", user.id);
+    tracing::info!("Invite accepted successfully for token: {}", accept_invite.token);
     Ok(Json(ApiResponse::success(
         user,
         "Invite accepted successfully",

@@ -51,6 +51,7 @@ async fn main() {
             "/api/invoices",
             api::invoice::routes::invoice_router().await,
         )
+        .nest("/api/user", api::user::routes::user_router().await)
         .layer(Extension(pool));
 
     let bind_address = format!("0.0.0.0:{}", config.server_port);

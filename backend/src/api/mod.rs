@@ -14,3 +14,4 @@ pub mod invoice;
 pub mod node;
 pub mod notification;
 pub mod payment;
+pub mod user;

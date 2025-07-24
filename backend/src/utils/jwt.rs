@@ -8,6 +8,7 @@ use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, deco
 use serde::{Deserialize, Serialize};
 
 use crate::config::Config;
+use crate::database::models::RoleAccessLevel;
 use crate::errors::ServiceError;
 
 /// JWT Claims structure containing user and node authentication data
@@ -19,6 +20,8 @@ pub struct Claims {
     pub account_id: String,
     /// User role
     pub role: String,
+    /// Role access level
+    pub role_access_level: RoleAccessLevel,
     /// Node credentials (optional, now unencrypted)
     pub node_credentials: Option<NodeCredentials>,
     /// Token expiration timestamp
@@ -73,6 +76,7 @@ impl JwtUtils {
         user_id: String,
         account_id: String,
         role: String,
+        role_access_level: RoleAccessLevel,
         node_credentials: Option<NodeCredentials>,
     ) -> Result<String, ServiceError> {
         // Get expires_in from config
@@ -87,6 +91,7 @@ impl JwtUtils {
             sub: user_id,
             account_id,
             role,
+            role_access_level,
             node_credentials,
             exp: exp.timestamp() as usize,
             iat: now.timestamp() as usize,
@@ -104,7 +109,11 @@ impl JwtUtils {
     }
 
     /// Generate a refresh token (longer expiration)
-    pub fn generate_refresh_token(&self, user_id: String) -> Result<String, ServiceError> {
+    pub fn generate_refresh_token(
+        &self,
+        user_id: String,
+        role_access_level: RoleAccessLevel,
+    ) -> Result<String, ServiceError> {
         let now = Utc::now();
         let exp = now + Duration::days(30); // Refresh token expires in 30 days
 
@@ -112,6 +121,7 @@ impl JwtUtils {
             sub: user_id,
             account_id: String::new(), // Refresh tokens don't need account info
             role: String::new(),
+            role_access_level,
             node_credentials: None,
             exp: exp.timestamp() as usize,
             iat: now.timestamp() as usize,

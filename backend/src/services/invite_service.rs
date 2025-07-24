@@ -4,7 +4,8 @@
 
 use crate::config::Config;
 use crate::database::models::{
-    AcceptInviteRequest, CreateInvite, CreateInviteRequest, Invite, InviteStatus, User,
+    AcceptInviteRequest, CreateInvite, CreateInviteRequest, Invite, InviteStatus, RoleAccessLevel,
+    User,
 };
 use crate::errors::{ServiceError, ServiceResult};
 use crate::repositories::account_repository::AccountRepository;
@@ -373,12 +374,13 @@ impl<'a> InviteService<'a> {
         let user = sqlx::query_as!(
             crate::database::models::User,
             r#"
-            INSERT INTO users (id, account_id, role_id, username, password_hash, email, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO users (id, account_id, role_id, role_access_level, username, password_hash, email, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING
             id as "id!",
             account_id as "account_id!",
             role_id as "role_id!",
+            role_access_level as "role_access_level: RoleAccessLevel",
             username as "username!",
             password_hash as "password_hash!",
             email as "email!",
@@ -391,6 +393,7 @@ impl<'a> InviteService<'a> {
             user_id,
             invite.account_id,
             role.id,
+            RoleAccessLevel::Read,
             accept_invite.username,
             password_hash,
             invite.invitee_email,

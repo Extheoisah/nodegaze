@@ -2,7 +2,7 @@
 //!
 //! Handles all account-related business operations
 
-use crate::database::models::{Account, CreateAccount, CreateNewAccount, UserWithAccount};
+use crate::database::models::{Account, CreateAccount, CreateNewAccount, UserWithAccount, RoleAccessLevel};
 use crate::errors::{ServiceError, ServiceResult};
 use crate::repositories::account_repository::AccountRepository;
 use crate::repositories::role_repository::RoleRepository;
@@ -159,12 +159,13 @@ impl<'a> AccountService<'a> {
         let user = sqlx::query_as!(
             crate::database::models::User,
             r#"
-            INSERT INTO users (id, account_id, role_id, username, password_hash, email, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO users (id, account_id, role_id, role_access_level, username, password_hash, email, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING
             id as "id!",
             account_id as "account_id!",
             role_id as "role_id!",
+            role_access_level as "role_access_level: RoleAccessLevel",
             username as "username!",
             password_hash as "password_hash!",
             email as "email!",
@@ -177,6 +178,7 @@ impl<'a> AccountService<'a> {
             user_id,
             account.id,
             role.id,
+            RoleAccessLevel::ReadWrite,
             create_account.username,
             password_hash,
             create_account.email,

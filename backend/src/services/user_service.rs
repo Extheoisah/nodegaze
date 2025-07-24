@@ -2,7 +2,8 @@
 //!
 //! Handles all account-related business operations
 
-use crate::database::models::{CreateNewUser, CreateUser, User};
+use crate::api::common::PaginationFilter;
+use crate::database::models::{CreateNewUser, CreateUser, Role, RoleAccessLevel, User};
 use crate::errors::{ServiceError, ServiceResult};
 use crate::repositories::account_repository::AccountRepository;
 use crate::repositories::role_repository::RoleRepository;
@@ -24,125 +25,6 @@ impl<'a> UserService<'a> {
     /// * `pool` - Reference to SQLite connection pool
     pub fn new(pool: &'a SqlitePool) -> Self {
         Self { pool }
-    }
-
-    /// Creates a new user with full validation.
-    ///
-    /// # Arguments
-    /// * `create_user` - User creation data transfer object
-    ///
-    /// # Returns
-    /// The newly created User with all fields populated
-    ///
-    /// # Errors
-    /// Returns `ServiceError` for:
-    /// - Validation failures
-    /// - Non-existent account or role
-    /// - Duplicate usernames or emails
-    /// - Business rule violations
-    pub async fn create_user(&self, create_user: CreateNewUser) -> ServiceResult<User> {
-        // Input validation using validator crate
-        if let Err(validation_errors) = create_user.validate() {
-            let error_messages: Vec<String> = validation_errors
-                .field_errors()
-                .into_iter()
-                .flat_map(|(field, errors)| {
-                    errors.iter().map(move |error| {
-                        format!(
-                            "{}: {}",
-                            field,
-                            error.message.as_ref().unwrap_or(&"Invalid value".into())
-                        )
-                    })
-                })
-                .collect();
-
-            return Err(ServiceError::validation(error_messages.join(", ")));
-        }
-
-        let repo = UserRepository::new(self.pool);
-
-        // Check if username already exists globally
-        if repo.username_exists(&create_user.username).await? {
-            return Err(ServiceError::already_exists(
-                "User with username",
-                &create_user.username,
-            ));
-        }
-
-        // Check if email already exists globally
-        if repo.email_exists(&create_user.email).await? {
-            return Err(ServiceError::already_exists(
-                "User with email",
-                &create_user.email,
-            ));
-        }
-
-        // Check if the account exists
-        let account_repo = AccountRepository::new(self.pool);
-        if account_repo
-            .get_account_by_id(&create_user.account_id)
-            .await?
-            .is_none()
-        {
-            return Err(ServiceError::not_found("Account", &create_user.account_id));
-        }
-
-        // Check if role exists
-        let role_repo = RoleRepository::new(self.pool);
-        let role = role_repo.get_role_by_id(&create_user.role_id).await?;
-
-        if role.is_none() {
-            return Err(ServiceError::not_found("Role", &create_user.role_id));
-        }
-
-        // Additional check: if this is an admin role, ensure no other admin exists for this account
-        let role = role.unwrap();
-        if role.name == "Admin" {
-            if repo
-                .get_admin_user_by_account_id(&create_user.account_id)
-                .await?
-                .is_some()
-            {
-                return Err(ServiceError::already_exists(
-                    "Admin user for account",
-                    &create_user.account_id,
-                ));
-            }
-        }
-
-        // Business validation
-        self.validate_business_rules(&create_user)?;
-
-        // Hash the password with proper error handling
-        let password_hash = self.hash_password(&create_user.password)?;
-
-        // Store values before moving them into CreateUser
-        let name = create_user.username.clone();
-        let email = create_user.email.clone();
-
-        let data = CreateUser {
-            id: Uuid::now_v7().to_string(),
-            account_id: create_user.account_id,
-            role_id: create_user.role_id,
-            username: create_user.username,
-            email: create_user.email,
-            password_hash,
-        };
-
-        let user = repo.create_user(data).await.map_err(|e| {
-            // Handle potential database constraint violations
-            let error_msg = e.to_string();
-            if error_msg.contains("UNIQUE constraint failed: users.name") {
-                ServiceError::already_exists("User with username", &name)
-            } else if error_msg.contains("UNIQUE constraint failed: users.email") {
-                ServiceError::already_exists("User with email", &email)
-            } else {
-                ServiceError::Database { source: e }
-            }
-        })?;
-
-        Ok(user)
     }
 
     /// Function to hash a password before storing in database
@@ -195,6 +77,54 @@ impl<'a> UserService<'a> {
         Ok(user)
     }
 
+    /// Retrieves an admin user by Account ID.
+    ///
+    /// # Arguments
+    /// * `id` - Account ID (UUID format)
+    ///
+    /// # Returns
+    /// The requested Admin User if found
+    ///
+    /// # Errors
+    /// Returns `ServiceError::NotFound` if admin user doesn't exist
+    pub async fn get_admin_user_required(&self, id: &str) -> ServiceResult<User> {
+        let repo = UserRepository::new(self.pool);
+        let user = repo
+            .get_admin_user_by_account_id(id)
+            .await?
+            .ok_or_else(|| ServiceError::not_found("Admin User", id))?;
+        Ok(user)
+    }
+
+    /// Retrieves all users by Account ID.
+    ///
+    /// # Arguments
+    /// * `id` - Account ID (UUID format)
+    ///
+    /// # Returns
+    /// The requested Users if found
+    ///
+    /// # Errors
+    /// Returns `ServiceError::NotFound` if users don't exist
+    pub async fn get_account_users(
+        &self,
+        id: &str,
+        pagination: &PaginationFilter,
+    ) -> ServiceResult<(Vec<User>, u64)> {
+        let repo = UserRepository::new(self.pool);
+
+        // Get total count first
+        let total_count = repo.get_users_count_by_account_id(id).await?;
+
+        if total_count == 0 {
+            return Err(ServiceError::not_found("Users", id));
+        }
+
+        let users = repo.get_users_by_account_id(id, pagination).await?;
+
+        Ok((users, total_count))
+    }
+
     /// Authenticates a user with username and password.
     ///
     /// # Arguments
@@ -235,20 +165,60 @@ impl<'a> UserService<'a> {
         Ok(user)
     }
 
-    /// Business validation rules.
-    fn validate_business_rules(&self, create_user: &CreateNewUser) -> ServiceResult<()> {
-        // Validate username doesn't start with numbers or special characters
-        if create_user
-            .username
-            .chars()
-            .next()
-            .map_or(false, |c| c.is_numeric() || !c.is_alphanumeric())
-        {
-            return Err(ServiceError::validation(
-                "User name must start with a letter",
-            ));
+    /// Changes a user's role access.
+    ///
+    pub async fn change_user_role_access(&self, user_id: &str) -> ServiceResult<User> {
+        let repo = UserRepository::new(self.pool);
+        let mut user = repo
+            .get_user_by_id(user_id)
+            .await?
+            .ok_or_else(|| ServiceError::not_found(" User", user_id))?;
+
+        let role_repo = RoleRepository::new(self.pool);
+        let role = role_repo.get_role_by_name("Admin").await?;
+        if role.is_none() {
+            return Err(ServiceError::not_found("Role", "Admin"));
         }
 
-        Ok(())
+        let role = role.unwrap();
+
+        if user.role_id == role.id {
+            return Err(ServiceError::validation("User already has Admin role"));
+        }
+
+        match user.role_access_level {
+            RoleAccessLevel::Read => {
+                user.role_access_level = RoleAccessLevel::ReadWrite;
+            }
+            RoleAccessLevel::ReadWrite => {
+                user.role_access_level = RoleAccessLevel::Read;
+            }
+            _ => {
+                user.role_access_level = RoleAccessLevel::ReadWrite;
+            }
+        }
+
+        // Update user in the database
+        let rows_affected = sqlx::query!(
+            r#"
+            UPDATE users
+            SET role_access_level = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND is_deleted = 0
+            "#,
+            user.role_access_level,
+            user.id
+        )
+        .execute(self.pool)
+        .await
+        .map_err(|e| ServiceError::Database { source: e.into() })?
+        .rows_affected();
+
+        // Check if the update actually affected any rows
+        if rows_affected == 0 {
+            return Err(ServiceError::validation("User role access not changed"));
+        }
+
+        Ok(user)
     }
 }

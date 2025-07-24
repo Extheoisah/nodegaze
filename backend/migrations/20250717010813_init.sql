@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
     role_id TEXT NOT NULL,
+    role_access_level TEXT NOT NULL DEFAULT 'Read', -- Default access level
     is_active BOOLEAN NOT NULL DEFAULT 1,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -39,6 +40,7 @@ CREATE INDEX idx_users_account_id ON users(account_id);
 CREATE INDEX idx_users_username ON users(username);
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_role_id ON users(role_id);
+CREATE INDEX idx_users_role_access_level ON users(role_access_level);
 
 CREATE TRIGGER users_updated_at
     AFTER UPDATE ON users

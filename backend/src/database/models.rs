@@ -73,11 +73,39 @@ pub struct User {
     pub password_hash: String,
     pub email: String,
     pub role_id: String,
+    pub role_access_level: RoleAccessLevel,
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub is_deleted: bool,
     pub deleted_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, PartialEq, PartialOrd)]
+#[sqlx(type_name = "TEXT")] // Store as TEXT in SQLite
+pub enum RoleAccessLevel {
+    Read = 1,
+    ReadWrite = 2,
+}
+
+impl std::fmt::Display for RoleAccessLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RoleAccessLevel::Read => write!(f, "Read"),
+            RoleAccessLevel::ReadWrite => write!(f, "ReadWrite"),
+        }
+    }
+}
+
+impl std::str::FromStr for RoleAccessLevel {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Read" => Ok(RoleAccessLevel::Read),
+            "ReadWrite" => Ok(RoleAccessLevel::ReadWrite),
+            _ => Err(format!("Invalid role access level: {}", s)),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -95,10 +123,10 @@ pub struct CreateNewUser {
     ))]
     pub username: String,
 
-    // #[validate(
-    //     email(message = "Must be a valid email"),
-    //     length(max = 255, message = "Email too long")
-    // )]
+    #[validate(
+        email(message = "Must be a valid email"),
+        length(max = 255, message = "Email too long")
+    )]
     pub email: String,
 
     #[validate(length(min = 1, message = "Password is required"))]
@@ -130,6 +158,7 @@ pub struct CreateUser {
 
     #[validate(length(min = 1, message = "Password hash is required"))]
     pub password_hash: String,
+    pub role_access_level: RoleAccessLevel,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

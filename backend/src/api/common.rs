@@ -36,7 +36,7 @@ use axum::http::StatusCode;
 use chrono::{DateTime, Utc};
 use serde::{
     Deserialize, Serialize,
-    de::{DeserializeOwned, Deserializer, Error as DeError},
+    de::{DeserializeOwned, Deserializer},
 };
 use std::fmt::Debug;
 use std::str::FromStr;
@@ -312,7 +312,7 @@ impl<T> ApiResponse<T> {
 impl PaginationFilter {
     /// Get page number with default
     pub fn page(&self) -> u32 {
-        self.page.unwrap_or(1)
+        self.page.unwrap_or(1).max(1)
     }
 
     /// Get per_page with default
@@ -321,13 +321,13 @@ impl PaginationFilter {
     }
 
     /// Calculate offset for database queries
-    pub fn offset(&self) -> u64 {
-        ((self.page() - 1) * self.per_page()) as u64
+    pub fn offset(&self) -> i64 {
+        ((self.page() - 1) * self.per_page()) as i64
     }
 
     /// Get limit for database queries
-    pub fn limit(&self) -> u64 {
-        self.per_page() as u64
+    pub fn limit(&self) -> i64 {
+        self.per_page() as i64
     }
 }
 
