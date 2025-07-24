@@ -9,17 +9,27 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 
-export function DashboardHeader() {
+interface DashboardHeaderProps {
+  pageTitle: string;
+}
+
+export function DashboardHeader({ pageTitle }: DashboardHeaderProps) {
+  const showPageTitle = pageTitle.toLowerCase() === "events";
+
   return (
     <header className="flex h-16 items-center justify-between mt-5 bg-background px-6">
       <div className="flex items-center gap-4">
-        <div className="relative w-96">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search"
-            className="pl-10 border-1 border-[oklch(0.8715 0.0123 259.82)] h-11 rounded-md bg-muted/0"
-          />
-        </div>
+        {showPageTitle ? (
+          <h1 className="text-3xl font-bold text-grey-dark">{pageTitle}</h1>
+        ) : (
+          <div className="relative w-96">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search"
+              className="pl-10 border-1 border-[oklch(0.8715 0.0123 259.82)] h-11 rounded-md bg-muted/0"
+            />
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-4">
