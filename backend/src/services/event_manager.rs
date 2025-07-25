@@ -112,13 +112,17 @@ impl EventCollector {
             let mut lnd_node_guard = lnd_node_.lock().await;
             let event_stream_result = lnd_node_guard.stream_events().await;
 
-            let mut event_stream: Pin<Box<dyn Stream<Item = NodeSpecificEvent> + Send>> = match event_stream_result {
-                Ok(stream) => stream,
-                Err(e) => {
-                    eprintln!("Failed to start event stream for node {}: {:?}", node_id_for_task, e);
-                    return;
-                }
-            };
+            let mut event_stream: Pin<Box<dyn Stream<Item = NodeSpecificEvent> + Send>> =
+                match event_stream_result {
+                    Ok(stream) => stream,
+                    Err(e) => {
+                        eprintln!(
+                            "Failed to start event stream for node {}: {:?}",
+                            node_id_for_task, e
+                        );
+                        return;
+                    }
+                };
 
             while let Some(event) = event_stream.next().await {
                 if sender.send(event).await.is_err() {
@@ -188,7 +192,7 @@ impl EventHandler {
             &self.node_id,
             &self.node_alias,
         ) {
-            let event_service = crate::services::event_service::EventService::new();
+            let event_service = crate::services::event_service::EventService::new(pool);
 
             if let Err(e) = event_service
                 .process_lightning_event(

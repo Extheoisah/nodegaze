@@ -205,39 +205,4 @@ impl NotificationDispatcher {
 
         Ok(())
     }
-
-    /// Tests a notification endpoint without sending a real event.
-    pub async fn test_notification(
-        &self,
-        notification: &Notification,
-    ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-        let test_event = Event {
-            id: "test".to_string(),
-            account_id: notification.account_id.clone(),
-            user_id: notification.user_id.clone(),
-            node_id: "test_node".to_string(),
-            node_alias: "Test Node".to_string(),
-            event_type: crate::database::models::EventType::InvoiceSettled,
-            severity: crate::database::models::EventSeverity::Info,
-            title: "Test Notification".to_string(),
-            description: "This is a test notification from NodeGaze".to_string(),
-            data: json!({"test": true}).to_string(),
-            timestamp: chrono::Utc::now(),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            is_deleted: false,
-            deleted_at: None,
-        };
-
-        match self
-            .send_to_endpoint(&test_event, notification.clone())
-            .await
-        {
-            Ok(_) => Ok(true),
-            Err(e) => {
-                error!("Test notification failed: {}", e);
-                Ok(false)
-            }
-        }
-    }
 }

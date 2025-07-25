@@ -3,9 +3,11 @@
 //! Handles all notification-related business operations
 
 use crate::database::models::{
-    CreateNotification, CreateNotificationRequest, Notification, UpdateNotificationRequest, User,
+    CreateNotification, CreateNotificationRequest, Event, EventResponse, Notification,
+    UpdateNotificationRequest, User,
 };
 use crate::errors::{ServiceError, ServiceResult};
+use crate::repositories::event_repository::EventRepository;
 use crate::repositories::notification_repository::NotificationRepository;
 use sqlx::SqlitePool;
 use uuid::Uuid;
@@ -156,6 +158,47 @@ impl<'a> NotificationService<'a> {
         repo.delete_notification(id).await?;
 
         Ok(())
+    }
+
+    /// Gets events dispatched to a specific notification endpoint.
+    pub async fn get_events_for_notification(
+        &self,
+        notifications_id: &str,
+        account_id: &str,
+        limit: Option<i64>,
+        offset: Option<i64>,
+    ) -> ServiceResult<Vec<EventResponse>> {
+        // First verify the notification belongs to the account
+        self.get_notification_required(notifications_id, account_id)
+            .await?;
+
+        let limit = limit.unwrap_or(50).min(1000);
+        let offset = offset.unwrap_or(0);
+
+        let event_repo = EventRepository::new(self.pool);
+        let events = event_repo
+            .get_events_by_notification_id(notifications_id, limit, offset)
+            .await?;
+
+        Ok(events)
+    }
+
+    /// Gets count of events for a notification endpoint.
+    pub async fn count_events_for_notification(
+        &self,
+        notifications_id: &str,
+        account_id: &str,
+    ) -> ServiceResult<i64> {
+        // First verify the notification belongs to the account
+        self.get_notification_required(notifications_id, account_id)
+            .await?;
+
+        let event_repo = EventRepository::new(self.pool);
+        let count = event_repo
+            .count_events_by_notification_id(notifications_id)
+            .await?;
+
+        Ok(count)
     }
 
     /// Validates URL based on notification type.
