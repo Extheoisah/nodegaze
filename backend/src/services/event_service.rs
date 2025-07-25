@@ -62,23 +62,20 @@ impl<'a> EventService<'a> {
             created_events.push(event);
         }
 
-        // Dispatch notifications
-        if !created_events.is_empty() {
-            if let Err(e) = self
-                .dispatcher
-                .dispatch_event(self.pool, &created_events[0])
-                .await
-            {
-                eprintln!("Failed to dispatch event notifications: {}", e);
+        // Dispatch notifications for all created events
+        for event in &created_events {
+            if let Err(e) = self.dispatcher.dispatch_event(self.pool, event).await {
+                tracing::error!("Failed to dispatch event notifications: {}", e);
             }
-        } else {
-            eprintln!("No events were created, skipping dispatch.");
         }
 
-        Ok(created_events.into_iter().next().unwrap_or_else(|| {
-            // Handle case where no events were created (shouldn't happen)
-            panic!("No events were created")
-        }))
+        // Return the first event, or an error if none were created
+        created_events
+            .into_iter()
+            .next()
+            .ok_or_else(|| ServiceError::InternalError {
+                message: "No events were created".to_string(),
+            })
     }
 
     /// Retrieves events for an account with optional filters.
@@ -195,7 +192,7 @@ impl<'a> EventService<'a> {
         .await
     }
 
-    /// Processes LND-specific events
+    /// Processes LND-specific events.v4
     fn process_lnd_event(
         &self,
         lnd_event: &crate::services::event_manager::LNDEvent,
