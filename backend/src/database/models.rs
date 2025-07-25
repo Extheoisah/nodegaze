@@ -433,7 +433,7 @@ impl From<Event> for EventResponse {
             severity: event.severity,
             title: event.title,
             description: event.description,
-            data: serde_json::Value::String(event.data),
+            data: serde_json::from_str(&event.data).unwrap_or(serde_json::Value::Null),
             timestamp: event.timestamp,
             notifications_id: event.notifications_id,
             created_at: event.created_at,
