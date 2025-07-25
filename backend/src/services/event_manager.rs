@@ -112,6 +112,8 @@ impl EventCollector {
             let mut lnd_node_guard = lnd_node_.lock().await;
             let event_stream_result = lnd_node_guard.stream_events().await;
 
+            drop(lnd_node_guard);
+
             let mut event_stream: Pin<Box<dyn Stream<Item = NodeSpecificEvent> + Send>> = match event_stream_result {
                 Ok(stream) => stream,
                 Err(e) => {
