@@ -63,12 +63,16 @@ impl<'a> EventService<'a> {
         }
 
         // Dispatch notifications
-        if let Err(e) = self
-            .dispatcher
-            .dispatch_event(self.pool, &created_events[0])
-            .await
-        {
-            eprintln!("Failed to dispatch event notifications: {}", e);
+        if !created_events.is_empty() {
+            if let Err(e) = self
+                .dispatcher
+                .dispatch_event(self.pool, &created_events[0])
+                .await
+            {
+                eprintln!("Failed to dispatch event notifications: {}", e);
+            }
+        } else {
+            eprintln!("No events were created, skipping dispatch.");
         }
 
         Ok(created_events.into_iter().next().unwrap_or_else(|| {
