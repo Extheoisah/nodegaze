@@ -3,7 +3,7 @@
 //! Handles all notification-related business operations
 
 use crate::database::models::{
-    CreateNotification, CreateNotificationRequest, Event, EventResponse, Notification,
+    CreateNotification, CreateNotificationRequest, EventResponse, Notification,
     UpdateNotificationRequest, User,
 };
 use crate::errors::{ServiceError, ServiceResult};

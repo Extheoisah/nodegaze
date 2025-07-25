@@ -36,7 +36,7 @@ use axum::http::StatusCode;
 use chrono::{DateTime, Utc};
 use serde::{
     Deserialize, Serialize,
-    de::{DeserializeOwned, Deserializer, Error as DeError},
+    de::{DeserializeOwned, Deserializer},
 };
 use std::fmt::Debug;
 use std::str::FromStr;

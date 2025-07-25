@@ -212,7 +212,7 @@ impl<'a> InviteService<'a> {
 
     pub async fn resend_invite(&self, invite_id: &str, user: &User) -> ServiceResult<Invite> {
         let repo = InviteRepository::new(self.pool);
-        let mut invite = repo
+        let invite = repo
             .get_invite_by_id(invite_id)
             .await?
             .ok_or_else(|| ServiceError::not_found("Invite", invite_id))?;
@@ -301,7 +301,7 @@ impl<'a> InviteService<'a> {
         let repo = InviteRepository::new(self.pool);
 
         // Get invite by token
-        let mut invite = repo
+        let invite = repo
             .get_invite_by_token(&accept_invite.token)
             .await?
             .ok_or_else(|| ServiceError::not_found("Invite", &accept_invite.token))?;

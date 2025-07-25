@@ -109,7 +109,7 @@ pub async fn optional_jwt_auth(mut request: Request, next: Next) -> Result<Respo
 }
 
 /// Admin role authorization middleware
-pub async fn admin_auth(mut request: Request, next: Next) -> Result<Response, Response> {
+pub async fn admin_auth(request: Request, next: Next) -> Result<Response, Response> {
     // Get claims from request extensions (should be set by jwt_auth middleware)
     let claims = request.extensions().get::<crate::utils::jwt::Claims>();
 
@@ -134,7 +134,7 @@ pub async fn admin_auth(mut request: Request, next: Next) -> Result<Response, Re
 
 /// Node credentials required middleware
 pub async fn node_credentials_required(
-    mut request: Request,
+    request: Request,
     next: Next,
 ) -> Result<Response, Response> {
     // Get claims from request extensions
