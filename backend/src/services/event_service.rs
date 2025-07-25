@@ -195,7 +195,7 @@ impl<'a> EventService<'a> {
         .await
     }
 
-    /// Processes LND-specific events.v4
+    /// Processes LND-specific events
     fn process_lnd_event(
         &self,
         lnd_event: &crate::services::event_manager::LNDEvent,
