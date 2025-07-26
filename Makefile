@@ -15,7 +15,7 @@ help:
 	@echo "  clean     - Clean build artifacts"
 
 # Complete setup process
-setup: createdb migrate prepare
+setup: reset createdb migrate prepare
 	@echo "Setup complete! Ready to run the application."
 
 # Create the database

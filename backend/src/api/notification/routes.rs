@@ -1,8 +1,8 @@
 //! Defines the HTTP routes for notification management.
 
 use super::handlers::{
-    create_notification, delete_notification, get_notification_by_id, get_notifications,
-    update_notification,
+    create_notification, delete_notification, get_notification_by_id, get_notification_events,
+    get_notifications, update_notification,
 };
 use crate::auth::middleware::jwt_auth;
 use axum::{
@@ -21,5 +21,7 @@ pub async fn notification_router() -> Router {
         .route("/{id}", put(update_notification))
         .layer(middleware::from_fn(jwt_auth))
         .route("/{id}", delete(delete_notification))
+        .layer(middleware::from_fn(jwt_auth))
+        .route("/{id}/events", get(get_notification_events))
         .layer(middleware::from_fn(jwt_auth))
 }

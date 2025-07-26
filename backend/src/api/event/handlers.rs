@@ -25,7 +25,7 @@ pub async fn get_events(
 ) -> Result<ResponseJson<ApiResponse<EventListResponse>>, (StatusCode, String)> {
     let account_id = claims.account_id();
 
-    let service = EventService::new();
+    let service = EventService::new(&pool);
 
     // Get all events for the account
     let events = service
@@ -50,7 +50,7 @@ pub async fn get_event_by_id(
 ) -> Result<ResponseJson<ApiResponse<EventResponse>>, (StatusCode, String)> {
     let account_id = claims.account_id();
 
-    let service = EventService::new();
+    let service = EventService::new(&pool);
 
     // Get all events for the account
     let events = service

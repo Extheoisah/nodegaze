@@ -3,7 +3,6 @@ name = "backend"
 version = "0.1.0"
 edition = "2024"
 
-[patch.crates-io]
 [dependencies]
 bitcoin.workspace = true
 serde.workspace = true

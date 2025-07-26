@@ -1,16 +1,33 @@
 //! Handler functions for notification management API endpoints.
 
 use crate::api::common::{ApiResponse, service_error_to_http};
-use crate::database::models::{CreateNotificationRequest, Notification, UpdateNotificationRequest};
+use crate::database::models::{
+    CreateNotificationRequest, EventResponse, Notification, UpdateNotificationRequest,
+};
 use crate::services::notification_service::NotificationService;
 use crate::services::user_service::UserService;
 use crate::utils::jwt::Claims;
 use axum::{
-    extract::{Extension, Json, Path},
+    extract::{Extension, Json, Path, Query},
     http::StatusCode,
     response::Json as ResponseJson,
 };
+use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
+
+// Query parameters struct
+#[derive(Debug, Deserialize)]
+pub struct EventsQueryParams {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+// Response struct
+#[derive(Debug, Serialize)]
+pub struct NotificationEventsResponse {
+    pub events: Vec<EventResponse>,
+    pub total_count: i64,
+}
 
 /// Creates a new notification.
 #[axum::debug_handler]
@@ -114,6 +131,44 @@ pub async fn delete_notification(
             (),
             "Notification deleted successfully",
         ))),
+        Err(error) => Err(service_error_to_http(error)),
+    }
+}
+
+/// Retrieves events for a specific notification endpoint.
+#[axum::debug_handler]
+pub async fn get_notification_events(
+    Extension(pool): Extension<SqlitePool>,
+    Extension(claims): Extension<Claims>,
+    Path(id): Path<String>,
+    Query(params): Query<EventsQueryParams>,
+) -> Result<ResponseJson<ApiResponse<NotificationEventsResponse>>, (StatusCode, String)> {
+    let account_id = claims.account_id();
+
+    let service = NotificationService::new(&pool);
+
+    // Get events for the notification
+    match service
+        .get_events_for_notification(&id, account_id, params.limit, params.offset)
+        .await
+    {
+        Ok(events) => {
+            // Get total count
+            let total_count = service
+                .count_events_for_notification(&id, account_id)
+                .await
+                .map_err(service_error_to_http)?;
+
+            let response = NotificationEventsResponse {
+                events,
+                total_count,
+            };
+
+            Ok(ResponseJson(ApiResponse::success(
+                response,
+                "Notification events retrieved successfully",
+            )))
+        }
         Err(error) => Err(service_error_to_http(error)),
     }
 }

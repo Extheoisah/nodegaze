@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE invites \n            SET invite_status = ?, \n                updated_at = CURRENT_TIMESTAMP\n            WHERE id = ? AND is_deleted = 0\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "e5724216e341699305822b3452a1a63af1fa8e1fe484dcab468f81d79801c60a"
+}

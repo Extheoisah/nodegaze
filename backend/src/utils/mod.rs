@@ -5,7 +5,7 @@
 
 use crate::errors::LightningError;
 use bitcoin::secp256k1::PublicKey;
-use bitcoin::{Address, OutPoint, ScriptBuf};
+use bitcoin::OutPoint;
 use expanduser::expanduser;
 use lightning::ln::features::NodeFeatures;
 use serde::{Deserialize, Serialize};

@@ -185,12 +185,14 @@ CREATE TABLE IF NOT EXISTS events (
     description TEXT NOT NULL,
     data TEXT NOT NULL, -- JSON data
     timestamp DATETIME NOT NULL,
+    notifications_id TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN NOT NULL DEFAULT 0,
     deleted_at DATETIME DEFAULT NULL,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (notifications_id) REFERENCES notifications(id) ON DELETE SET NULL
 );
 
 CREATE INDEX idx_events_account_id ON events(account_id);
@@ -199,6 +201,7 @@ CREATE INDEX idx_events_node_id ON events(node_id);
 CREATE INDEX idx_events_type ON events(event_type);
 CREATE INDEX idx_events_severity ON events(severity);
 CREATE INDEX idx_events_timestamp ON events(timestamp);
+CREATE INDEX idx_events_notifications_id ON events(notifications_id);
 
 CREATE TRIGGER events_updated_at
     AFTER UPDATE ON events

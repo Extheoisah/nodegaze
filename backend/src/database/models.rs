@@ -442,11 +442,32 @@ pub struct Event {
     pub title: String,
     pub description: String,
     pub data: String, // JSON string
+    pub notifications_id: Option<String>,
     pub timestamp: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub is_deleted: bool,
     pub deleted_at: Option<DateTime<Utc>>,
+}
+
+impl From<Event> for EventResponse {
+    fn from(event: Event) -> Self {
+        Self {
+            id: event.id,
+            account_id: event.account_id,
+            user_id: event.user_id,
+            node_id: event.node_id,
+            node_alias: event.node_alias,
+            event_type: event.event_type,
+            severity: event.severity,
+            title: event.title,
+            description: event.description,
+            data: serde_json::from_str(&event.data).unwrap_or(serde_json::Value::Null),
+            timestamp: event.timestamp,
+            notifications_id: event.notifications_id,
+            created_at: event.created_at,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, PartialEq)]
@@ -551,6 +572,7 @@ pub struct CreateEvent {
     #[validate(length(min = 1, message = "Description is required"))]
     pub description: String,
     pub data: String, // JSON string
+    pub notifications_id: Option<String>,
     pub timestamp: DateTime<Utc>,
 }
 
@@ -565,6 +587,7 @@ pub struct EventResponse {
     pub severity: EventSeverity,
     pub title: String,
     pub description: String,
+    pub notifications_id: Option<String>,
     pub data: serde_json::Value, // Parsed JSON
     pub timestamp: DateTime<Utc>,
     pub created_at: DateTime<Utc>,

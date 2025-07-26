@@ -1,6 +1,8 @@
 //! Database repository for event management operations.
 
-use crate::database::models::{CreateEvent, Event, EventFilters, EventSeverity, EventType};
+use crate::database::models::{
+    CreateEvent, Event, EventFilters, EventResponse, EventSeverity, EventType,
+};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
@@ -22,8 +24,8 @@ impl<'a> EventRepository<'a> {
         let event = sqlx::query_as!(
             Event,
             r#"
-            INSERT INTO events (id, account_id, user_id, node_id, node_alias, event_type, severity, title, description, data, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO events (id, account_id, user_id, node_id, node_alias, event_type, severity, title, description, data, notifications_id, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING
             id as "id!",
             account_id as "account_id!",
@@ -35,6 +37,7 @@ impl<'a> EventRepository<'a> {
             title as "title!",
             description as "description!",
             data as "data!",
+            notifications_id as "notifications_id!",
             timestamp as "timestamp!: DateTime<Utc>",
             created_at as "created_at!: DateTime<Utc>",
             updated_at as "updated_at!: DateTime<Utc>",
@@ -51,6 +54,7 @@ impl<'a> EventRepository<'a> {
             event.title,
             event.description,
             event.data,
+            event.notifications_id,
             event.timestamp
         )
         .fetch_one(self.pool)
@@ -92,6 +96,7 @@ impl<'a> EventRepository<'a> {
             severity as "severity: EventSeverity",
             title as "title!",
             description as "description!",
+            notifications_id as "notifications_id!",
             data as "data!",
             timestamp as "timestamp!: DateTime<Utc>",
             created_at as "created_at!: DateTime<Utc>",
@@ -151,6 +156,7 @@ impl<'a> EventRepository<'a> {
             title as "title!",
             description as "description!",
             data as "data!",
+            notifications_id as "notifications_id!",
             timestamp as "timestamp!: DateTime<Utc>",
             created_at as "created_at!: DateTime<Utc>",
             updated_at as "updated_at!: DateTime<Utc>",
@@ -197,6 +203,7 @@ impl<'a> EventRepository<'a> {
             timestamp as "timestamp!: DateTime<Utc>",
             created_at as "created_at!: DateTime<Utc>",
             updated_at as "updated_at!: DateTime<Utc>",
+            notifications_id as "notifications_id!",
             is_deleted as "is_deleted!",
             deleted_at as "deleted_at?: DateTime<Utc>"
             FROM events
@@ -225,6 +232,66 @@ impl<'a> EventRepository<'a> {
             "SELECT COUNT(*) as count FROM events WHERE account_id = ? AND severity = ? AND is_deleted = 0",
             account_id,
             severity
+        )
+        .fetch_one(self.pool)
+        .await?;
+
+        Ok(result.count)
+    }
+
+    /// Gets events by notification ID.
+    pub async fn get_events_by_notification_id(
+        &self,
+        notifications_id: &str,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<EventResponse>> {
+        let events = sqlx::query_as!(
+            Event,
+            r#"
+              SELECT
+              id as "id!",
+              account_id as "account_id!",
+              user_id as "user_id!",
+              node_id as "node_id!",
+              node_alias as "node_alias!",
+              event_type as "event_type: EventType",
+              severity as "severity: EventSeverity",
+              title as "title!",
+              description as "description!",
+              data as "data!",
+              timestamp as "timestamp!: DateTime<Utc>",
+              notifications_id as "notifications_id?",
+              created_at as "created_at!: DateTime<Utc>",
+              updated_at as "updated_at!: DateTime<Utc>",
+              is_deleted as "is_deleted!",
+              deleted_at as "deleted_at?: DateTime<Utc>"
+              FROM events
+              WHERE notifications_id = ? AND is_deleted = 0
+              ORDER BY timestamp DESC
+              LIMIT ? OFFSET ?
+              "#,
+            notifications_id,
+            limit,
+            offset
+        )
+        .fetch_all(self.pool)
+        .await?;
+
+        // Convert to EventResponse
+        let event_responses = events
+            .into_iter()
+            .map(|event| EventResponse::from(event))
+            .collect();
+
+        Ok(event_responses)
+    }
+
+    /// Gets event count by notification ID.
+    pub async fn count_events_by_notification_id(&self, notifications_id: &str) -> Result<i64> {
+        let result = sqlx::query!(
+            "SELECT COUNT(*) as count FROM events WHERE notifications_id = ? AND is_deleted = 0",
+            notifications_id
         )
         .fetch_one(self.pool)
         .await?;

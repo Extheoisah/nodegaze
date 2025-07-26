@@ -1,11 +1,5 @@
-use crate::api::common::{FilterRequest, NumericOperator, PaginatedData};
-use async_trait::async_trait;
-use axum::{
-    extract::FromRequestParts,
-    http::{StatusCode, request::Parts},
-};
+use crate::api::common::{FilterRequest, PaginatedData};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::str::FromStr;
 
 #[derive(Debug, Serialize)]

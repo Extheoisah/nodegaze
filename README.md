@@ -19,10 +19,12 @@ NodeGaze helps you truly see, understand, and master your Lightning node, settin
 - Rust toolchain
 - SQLite
 - Make
-
-> You will need SQLx-cli for db operations, for db operations, you can install it using `cargo install sqlx-cli`
+- Polar
+- Docker (Polar depends on docker)
 
 ### Getting Started
+
+#### You will need SQLx-cli for db operations, for db operations, you can install it using `cargo install sqlx-cli`
 
 1. **Clone the repository**
    ```bash
@@ -80,8 +82,6 @@ The Nix shell provides:
 - **bacon**: Continuous testing and checking
 - **sqlx-cli**: Database migrations and management
 - **rust-analyzer**: LSP server for IDE support
-- **rustfmt**: Code formatting
-- **clippy**: Linting
 
 ## Contributing
 

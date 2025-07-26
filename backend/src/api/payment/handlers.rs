@@ -18,8 +18,6 @@ use axum::{
     extract::{Extension, Path, Query, RawQuery},
     http::StatusCode,
 };
-use serde::Serialize;
-use sqlx::SqlitePool;
 use validator::Validate;
 
 /// Retrieves all payments for the connected node.
