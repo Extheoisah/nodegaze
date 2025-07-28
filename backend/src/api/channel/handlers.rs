@@ -4,7 +4,7 @@ use crate::utils::handlers_common::{
 use crate::utils::jwt::Claims;
 use crate::{
     api::common::{ApiResponse, PaginatedData, PaginationMeta, PaginationFilter, FilterRequest,
-    NumericOperator, apply_pagination, get_filtered_count, validation_error_response},
+    NumericOperator, apply_pagination, validation_error_response},
     services::node_manager::{ClnConnection, ClnNode, LightningClient, LndConnection, LndNode},
     utils::{ChannelDetails, ChannelSummary, NodeId, ShortChannelID, ChannelState},
 };

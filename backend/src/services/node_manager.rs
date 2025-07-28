@@ -10,7 +10,7 @@ use crate::{
     utils::{
         self, ChannelDetails, ChannelState, ChannelSummary, CustomInvoice, Feature, Hop,
         InvoiceHtlc, InvoiceStatus, NodeId, NodeInfo, NodePolicy, PaymentDetails, PaymentHtlc,
-        PaymentState, PaymentSummary, Route, ShortChannelID,
+        PaymentState, PaymentSummary, Route, ShortChannelID, sats_to_usd::{get_converter, PriceConverter}, 
     },
 };
 
@@ -682,9 +682,14 @@ impl LightningClient for LndNode {
             .map(|n| Some(n.to_string()))
             .unwrap_or(None);
 
+        let amount_sat: u64 = payment.value_sat.try_into().unwrap_or(0);
+
+        let amount_usd = get_converter().sats_to_usd(amount_sat).await?;
+
         Ok(PaymentDetails {
             state,
-            amount: payment.value_sat.try_into().unwrap_or(0),
+            amount_sat,
+            amount_usd,
             routing_fee: Some(payment.fee_sat.try_into().unwrap_or(0)),
             network,
             description: None,
@@ -705,6 +710,8 @@ impl LightningClient for LndNode {
             .map_err(|e| LightningError::RpcError(e.to_string()))?
             .into_inner();
 
+        let btc_price = get_converter().fetch_btc_price().await?;
+
         Ok(response
             .payments
             .into_iter()
@@ -718,10 +725,14 @@ impl LightningClient for LndNode {
                     PaymentStatus::Failed => PaymentState::Failed,
                 };
 
+                let amount_sat: u64 = payment.value_sat.try_into().unwrap_or(0);
+
+                let amount_usd = PriceConverter::sats_to_usd_with_price(amount_sat, btc_price);
+
                 PaymentSummary {
                     state,
-                    amount_sat: payment.value_sat.try_into().unwrap_or(0),
-                    amount_usd: 0,
+                    amount_sat,
+                    amount_usd,
                     routing_fee: payment.fee_sat.try_into().ok(),
                     creation_time: payment
                         .creation_time_ns
@@ -1238,7 +1249,7 @@ impl LightningClient for ClnNode {
         };
 
         // Calculate amounts
-        let amount = payment.amount_msat.map(|amt| amt.msat / 1000).unwrap_or(0);
+        let amount = payment.amount_msat.as_ref().map(|amt| amt.msat / 1000).unwrap_or(0);
         let sent_amount = payment
             .amount_sent_msat
             .map(|amt| amt.msat / 1000)
@@ -1272,9 +1283,14 @@ impl LightningClient for ClnNode {
             .map(|n| Some(n.to_string()))
             .unwrap_or(None);
 
+        let amount_sat: u64 = payment.amount_msat.as_ref().map(|amt| amt.msat / 1000).unwrap_or(0);
+
+        let amount_usd = get_converter().sats_to_usd(amount_sat).await?;
+
         Ok(PaymentDetails {
             state,
-            amount,
+            amount_sat,
+            amount_usd,
             routing_fee,
             network,
             description: payment.description,
@@ -1295,6 +1311,8 @@ impl LightningClient for ClnNode {
             .map_err(|e| LightningError::RpcError(e.to_string()))?
             .into_inner();
 
+        let btc_price = get_converter().fetch_btc_price().await?;
+
         let summaries = response
             .pays
             .into_iter()
@@ -1311,6 +1329,10 @@ impl LightningClient for ClnNode {
                     .as_ref()
                     .map(|msat| (msat.msat / 1000).try_into().unwrap_or(0))
                     .unwrap_or(0);
+
+                // Convert sats → USD using pre-fetched price
+                let amount_usd = PriceConverter::sats_to_usd_with_price(amount_sat, btc_price);
+
 
                 let routing_fee = match (
                     payment.amount_sent_msat.as_ref(),
@@ -1331,7 +1353,7 @@ impl LightningClient for ClnNode {
                 Some(PaymentSummary {
                     state,
                     amount_sat,
-                    amount_usd: 0,
+                    amount_usd,
                     routing_fee,
                     creation_time,
                     invoice: payment.bolt11,

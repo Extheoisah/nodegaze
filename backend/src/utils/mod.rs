@@ -5,7 +5,7 @@
 
 use crate::errors::LightningError;
 use bitcoin::secp256k1::PublicKey;
-use bitcoin::{Address, OutPoint, ScriptBuf, Txid};
+use bitcoin:: Txid;
 use expanduser::expanduser;
 use lightning::ln::features::NodeFeatures;
 use serde::{Deserialize, Serialize};
@@ -19,6 +19,7 @@ pub mod crypto;
 pub mod generate_random_string;
 pub mod handlers_common;
 pub mod jwt;
+pub mod sats_to_usd;
 
 /// Represents a node id, either by its public key or alias.
 #[derive(Serialize, Debug, Clone)]
@@ -223,7 +224,8 @@ pub struct NodeMetrics {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PaymentDetails {
     pub state: PaymentState,
-    pub amount: u64,
+    pub amount_sat: u64,
+    pub amount_usd: f64,
     pub routing_fee: Option<u64>,
     pub network: Option<String>,
     pub description: Option<String>,
@@ -240,7 +242,7 @@ pub struct PaymentDetails {
 pub struct PaymentSummary {
     pub state: PaymentState,
     pub amount_sat: u64,
-    pub amount_usd: u64,
+    pub amount_usd: f64,
     pub routing_fee: Option<u64>,
     pub creation_time: Option<SystemTime>,
     pub invoice: Option<String>,
