@@ -549,25 +549,28 @@ impl LightningClient for LndNode {
                     active: c.active,
                     private: c.private,
                     remote_pubkey,
-                    commit_fee_sat: c.commit_fee.try_into().unwrap_or(0),
-                    local_chan_reserve_sat: c
-                        .local_constraints
-                        .as_ref()
-                        .map(|lc| lc.chan_reserve_sat)
-                        .unwrap_or(0),
-                    remote_chan_reserve_sat: c
-                        .remote_constraints
-                        .as_ref()
-                        .map(|rc| rc.chan_reserve_sat)
-                        .unwrap_or(0),
-                    num_updates: c.num_updates,
-                    total_satoshis_sent: c.total_satoshis_sent.try_into().unwrap_or(0),
-                    total_satoshis_received: c.total_satoshis_received.try_into().unwrap_or(0),
+                    commit_fee_sat: Some(c.commit_fee as u64),
+                    local_chan_reserve_sat: Some(
+                        c.local_constraints
+                            .as_ref()
+                            .map(|lc| lc.chan_reserve_sat)
+                            .unwrap_or(0),
+                    ),
+                    remote_chan_reserve_sat: Some(
+                        c.remote_constraints
+                            .as_ref()
+                            .map(|rc| rc.chan_reserve_sat)
+                            .unwrap_or(0),
+                    ),
+                    num_updates: Some(c.num_updates),
+                    total_satoshis_sent: Some(c.total_satoshis_sent as u64),
+                    total_satoshis_received: Some(c.total_satoshis_received as u64),
                     channel_age_blocks: c.lifetime.try_into().ok(),
                     last_update: None,
                     opening_cost_sat: None,
-                    initiator: c.initiator,
-                    channel_point,
+                    initiator: Some(c.initiator),
+                    txid: Some(channel_point.txid),
+                    vout: Some(channel_point.vout),
                     node1_policy,
                     node2_policy,
                 })
@@ -984,7 +987,6 @@ impl LightningClient for LndNode {
             .map_err(|e| LightningError::RpcError(e.to_string()))?
             .into_inner();
 
-        // Map tonic's InvoiceState to your InvoiceStatus enum
         let state = match InvoiceState::try_from(response.state).unwrap_or(InvoiceState::Open) {
             InvoiceState::Open => InvoiceStatus::Open,
             InvoiceState::Settled => InvoiceStatus::Settled,
@@ -1148,13 +1150,6 @@ impl LightningClient for ClnNode {
             let local_balance_sat = amount_msat.map(|amt| amt.msat / 2000).unwrap_or(0);
             let remote_balance_sat = capacity_sat.saturating_sub(local_balance_sat);
 
-            let channel_point = OutPoint {
-                txid: Txid::from_slice(&[0u8; 32]).map_err(|e| {
-                    LightningError::ChannelError(format!("Invalid fallback txid: {}", e))
-                })?,
-                vout: 0,
-            };
-
             // Get node policies
             let node1_policy = if chan.source == self.info.pubkey.serialize().to_vec() {
                 Some(NodePolicy {
@@ -1194,17 +1189,18 @@ impl LightningClient for ClnNode {
                 active: chan.active,
                 private: !chan.public,
                 remote_pubkey,
-                commit_fee_sat: 0,
-                local_chan_reserve_sat: 0,
-                remote_chan_reserve_sat: 0,
-                num_updates: 0,
-                total_satoshis_sent: 0,
-                total_satoshis_received: 0,
+                commit_fee_sat: None,
+                local_chan_reserve_sat: None,
+                remote_chan_reserve_sat: None,
+                num_updates: None,
+                total_satoshis_sent: None,
+                total_satoshis_received: None,
                 channel_age_blocks: None,
                 last_update: None,
                 opening_cost_sat: None,
-                initiator: false,
-                channel_point,
+                initiator: None,
+                txid: None,
+                vout: None,
                 node1_policy,
                 node2_policy,
             })

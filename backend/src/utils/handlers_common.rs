@@ -68,7 +68,9 @@ pub fn parse_public_key(node_id: &str) -> Result<PublicKey, (StatusCode, String)
 }
 
 /// Extract TLS fields for CLN
-pub fn extract_cln_tls_components(node_credentials: &NodeCredentials) -> Result<(String, String, String), (StatusCode, String)> {
+pub fn extract_cln_tls_components(
+    node_credentials: &NodeCredentials,
+) -> Result<(String, String, String), (StatusCode, String)> {
     let client_cert = node_credentials.client_cert.as_ref().ok_or_else(|| {
         let error_response = ApiResponse::<()>::error(
             "Missing client certificate for CLN".to_string(),
