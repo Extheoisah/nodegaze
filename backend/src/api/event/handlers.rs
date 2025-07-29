@@ -1,6 +1,6 @@
 //! Handler functions for event management API endpoints.
 
-use crate::api::common::{ApiResponse, service_error_to_http};
+use crate::api::common::{ApiResponse, PaginatedData, service_error_to_http};
 use crate::database::models::EventResponse;
 use crate::services::event_service::EventService;
 use crate::utils::jwt::Claims;
@@ -9,20 +9,14 @@ use axum::{
     http::StatusCode,
     response::Json as ResponseJson,
 };
-use serde::Serialize;
 use sqlx::SqlitePool;
-
-#[derive(Debug, Serialize)]
-pub struct EventListResponse {
-    pub events: Vec<EventResponse>,
-}
 
 /// Retrieves events for the user's account.
 #[axum::debug_handler]
 pub async fn get_events(
     Extension(pool): Extension<SqlitePool>,
     Extension(claims): Extension<Claims>,
-) -> Result<ResponseJson<ApiResponse<EventListResponse>>, (StatusCode, String)> {
+) -> Result<ResponseJson<ApiResponse<PaginatedData<EventResponse>>>, (StatusCode, String)> {
     let account_id = claims.account_id();
 
     let service = EventService::new(&pool);
@@ -33,7 +27,8 @@ pub async fn get_events(
         .await
         .map_err(service_error_to_http)?;
 
-    let response = EventListResponse { events };
+    let total = events.len() as u64;
+    let response = PaginatedData::new(events, total);
 
     Ok(ResponseJson(ApiResponse::success(
         response,
