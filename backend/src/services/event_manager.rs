@@ -116,9 +116,10 @@ impl EventCollector {
                 match event_stream_result {
                     Ok(stream) => stream,
                     Err(e) => {
-                        eprintln!(
+                        tracing::error!(
                             "Failed to start event stream for node {}: {:?}",
-                            node_id_for_task, e
+                            node_id_for_task,
+                            e
                         );
                         return;
                     }
@@ -126,14 +127,14 @@ impl EventCollector {
 
             while let Some(event) = event_stream.next().await {
                 if sender.send(event).await.is_err() {
-                    eprintln!(
+                    tracing::error!(
                         "Failed to send event for node {}. Receiver likely dropped.",
                         node_id_for_task
                     );
                     break;
                 }
             }
-            println!("Event stream for node {} ended.", node_id_for_task);
+            tracing::info!("Event stream for node {} ended.", node_id_for_task);
         });
     }
 }
