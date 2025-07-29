@@ -24,7 +24,7 @@ NodeGaze helps you truly see, understand, and master your Lightning node, settin
 
 ### Getting Started
 
-#### You will need SQLx-cli for db operations, for db operations, you can install it using `cargo install sqlx-cli`
+#### You will need sqlx-cli for db operations, for db operations, you can install it using `cargo install sqlx-cli`
 
 1. **Clone the repository**
    ```bash
@@ -85,7 +85,7 @@ The Nix shell provides:
 
 ## Contributing
 
-1. Fork the repository
+1. Clone the repository or fork it
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
 3. Commit your changes (`git commit -m 'Add some amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
