@@ -16,12 +16,15 @@ struct PriceCache {
     last_updated: SystemTime,
 }
 
+#[derive(Clone)]
 pub struct PriceConverter {
     cache: Arc<RwLock<Option<PriceCache>>>,
     client: reqwest::Client,
 }
 
 impl PriceConverter {
+    const CACHE_DURATION: Duration = Duration::from_secs(120);
+
     pub fn new() -> Self {
         Self {
             cache: Arc::new(RwLock::new(None)),
@@ -50,65 +53,62 @@ impl PriceConverter {
     }
 
     async fn get_btc_price(&self) -> Result<f64, LightningError> {
-        const CACHE_DURATION: Duration = Duration::from_secs(300); // 5 minutes
-
-        // Try cache first (valid)
-        {
-            let cache = self.cache.read().await;
-            if let Some(cached) = &*cache {
-                if cached
-                    .last_updated
-                    .elapsed()
-                    .is_ok_and(|e| e < CACHE_DURATION)
-                {
-                    return Ok(cached.price);
-                }
-            }
+        // Check cache first (read lock)
+        if let Some(cached_price) = self.check_cache().await {
+            return Ok(cached_price);
         }
 
-        // Attempt to fetch new price
+        // Cache miss or expired - fetch fresh price
+        match self.fetch_btc_price_from_api().await {
+            Ok(price) => {
+                self.update_cache(price).await;
+                Ok(price)
+            }
+            Err(e) => {
+                // Fallback to stale cache if available
+                self.cache
+                    .read()
+                    .await
+                    .as_ref()
+                    .map(|c| c.price)
+                    .ok_or(e)
+            }
+        }
+    }
+
+    async fn check_cache(&self) -> Option<f64> {
+        let cache = self.cache.read().await;
+        cache.as_ref().and_then(|c| {
+            c.last_updated
+                .elapsed()
+                .ok()
+                .filter(|&elapsed| elapsed < Self::CACHE_DURATION)
+                .map(|_| c.price)
+        })
+    }
+
+    async fn fetch_btc_price_from_api(&self) -> Result<f64, LightningError> {
         let response = self
             .client
             .get("https://mempool.space/api/v1/prices")
             .timeout(Duration::from_secs(10))
             .send()
-            .await;
+            .await
+            .map_err(|e| LightningError::NetworkError(e.to_string()))?;
 
-        match response {
-            Ok(resp) => {
-                let price_data: MempoolPrice = resp
-                    .json()
-                    .await
-                    .map_err(|e| LightningError::Parse(e.to_string()))?;
+        let price_data: MempoolPrice = response
+            .json()
+            .await
+            .map_err(|e| LightningError::Parse(e.to_string()))?;
 
-                // Update cache
-                let mut cache = self.cache.write().await;
-                *cache = Some(PriceCache {
-                    price: price_data.usd,
-                    last_updated: SystemTime::now(),
-                });
-
-                Ok(price_data.usd)
-            }
-            Err(_) => {
-                // Fallback: use last cached price even if expired
-                let cache = self.cache.read().await;
-                if let Some(cached) = &*cache {
-                    Ok(cached.price)
-                } else {
-                    Err(LightningError::NetworkError(
-                        "Failed to fetch BTC price and no cached value".into(),
-                    ))
-                }
-            }
-        }
+        Ok(price_data.usd)
     }
-}
 
-// Global singleton instance
-use std::sync::OnceLock;
-static CONVERTER: OnceLock<PriceConverter> = OnceLock::new();
-
-pub fn get_converter() -> &'static PriceConverter {
-    CONVERTER.get_or_init(|| PriceConverter::new())
+    async fn update_cache(&self, price: f64) {
+        let mut cache = self.cache.write().await;
+        *cache = Some(PriceCache {
+            price,
+            last_updated: SystemTime::now(),
+        });
+    }
 }

@@ -10,7 +10,7 @@ use crate::{
     utils::{
         self, ChannelDetails, ChannelState, ChannelSummary, CustomInvoice, Feature, Hop,
         InvoiceHtlc, InvoiceStatus, NodeId, NodeInfo, NodePolicy, PaymentDetails, PaymentHtlc,
-        PaymentState, PaymentSummary, Route, ShortChannelID, sats_to_usd::{get_converter, PriceConverter}, 
+        PaymentState, PaymentSummary, Route, ShortChannelID, sats_to_usd::PriceConverter, 
     },
 };
 
@@ -76,6 +76,7 @@ pub struct LndNode {
     pub client: Mutex<Client>,
     pub info: NodeInfo,
     network: Network,
+    price_converter: PriceConverter,
 }
 
 /// Parses the node features from the format returned by LND gRPC to LDK NodeFeatures
@@ -141,6 +142,7 @@ impl LndNode {
                 alias,
             },
             network,
+            price_converter: PriceConverter::new()
         })
     }
 
@@ -194,6 +196,10 @@ impl LndNode {
         let mut client = self.client.lock().await;
         client.lightning().clone()
     }
+
+    pub async fn get_price_converter(&self) -> &PriceConverter {
+        &self.price_converter
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -214,6 +220,7 @@ pub struct ClnNode {
     pub client: Mutex<NodeClient<Channel>>,
     pub info: NodeInfo,
     network: Network,
+    price_converter: PriceConverter,
 }
 
 impl ClnNode {
@@ -278,6 +285,7 @@ impl ClnNode {
                 alias,
             },
             network,
+            price_converter: PriceConverter::new()
         })
     }
 
@@ -315,6 +323,10 @@ impl ClnNode {
 
     async fn get_client_stub(&self) -> NodeClient<Channel> {
         self.client.lock().await.clone()
+    }
+
+    pub async fn get_price_converter(&self) -> &PriceConverter {
+        &self.price_converter
     }
 }
 
@@ -427,7 +439,7 @@ impl LightningClient for LndNode {
         let response = lightning_stub
             .list_channels(ListChannelsRequest::default())
             .await
-            .map_err(|e| LightningError::RpcError(e.to_string()))?
+            .map_err(|err| LightningError::RpcError(err.to_string()))?
             .into_inner();
 
         Ok(response
@@ -467,19 +479,19 @@ impl LightningClient for LndNode {
                 ..Default::default()
             })
             .await
-            .map_err(|e| LightningError::ChannelError(format!("LND list_channels error: {}", e)))?;
+            .map_err(|err| LightningError::ChannelError(format!("LND list_channels error: {}", err)))?;
 
         let channel_opt = response
             .into_inner()
             .channels
             .into_iter()
-            .find(|c| c.chan_id == channel_id.0);
+            .find(|channel| channel.chan_id == channel_id.0);
 
         match channel_opt {
-            Some(c) => {
-                let channel_point = parse_channel_point(&c.channel_point)?;
-                let remote_pubkey = PublicKey::from_str(&c.remote_pubkey).map_err(|e| {
-                    LightningError::ChannelError(format!("Invalid remote pubkey: {}", e))
+            Some(channel) => {
+                let channel_point = parse_channel_point(&channel.channel_point)?;
+                let remote_pubkey = PublicKey::from_str(&channel.remote_pubkey).map_err(|err| {
+                    LightningError::ChannelError(format!("Invalid remote pubkey: {}", err))
                 })?;
 
                 // Get policies from describe_graph
@@ -491,49 +503,49 @@ impl LightningClient for LndNode {
                 {
                     Ok(graph_response) => {
                         let edges = graph_response.into_inner().edges;
-                        if let Some(e) = edges.into_iter().find(|e| e.channel_id == channel_id.0) {
+                        if let Some(channel_edge) = edges.into_iter().find(|channel_edge| channel_edge.channel_id == channel_id.0) {
                             let node1_pubkey =
-                                PublicKey::from_str(&e.node1_pub).unwrap_or(remote_pubkey);
+                                PublicKey::from_str(&channel_edge.node1_pub).unwrap_or(remote_pubkey);
                             let node2_pubkey =
-                                PublicKey::from_str(&e.node2_pub).unwrap_or(self.info.pubkey);
+                                PublicKey::from_str(&channel_edge.node2_pub).unwrap_or(self.info.pubkey);
 
-                            let p1 = e.node1_policy.as_ref().map(|p| NodePolicy {
+                            let node1_policy = channel_edge.node1_policy.as_ref().map(|routing_policy| NodePolicy {
                                 pubkey: node1_pubkey,
-                                fee_base_msat: p.fee_base_msat as u64,
-                                fee_rate_milli_msat: p.fee_rate_milli_msat as u64,
-                                min_htlc_msat: p.min_htlc as u64,
-                                max_htlc_msat: if p.max_htlc_msat > 0 {
-                                    Some(p.max_htlc_msat as u64)
+                                fee_base_msat: routing_policy.fee_base_msat as u64,
+                                fee_rate_milli_msat: routing_policy.fee_rate_milli_msat as u64,
+                                min_htlc_msat: routing_policy.min_htlc as u64,
+                                max_htlc_msat: if routing_policy.max_htlc_msat > 0 {
+                                    Some(routing_policy.max_htlc_msat as u64)
                                 } else {
                                     None
                                 },
-                                time_lock_delta: p.time_lock_delta as u16,
-                                disabled: p.disabled,
+                                time_lock_delta: routing_policy.time_lock_delta as u16,
+                                disabled: routing_policy.disabled,
                                 last_update: Some(
                                     SystemTime::UNIX_EPOCH
-                                        + Duration::from_secs(p.last_update as u64),
+                                        + Duration::from_secs(routing_policy.last_update as u64),
                                 ),
                             });
 
-                            let p2 = e.node2_policy.as_ref().map(|p| NodePolicy {
+                            let node2_policy = channel_edge.node2_policy.as_ref().map(|routing_policy| NodePolicy {
                                 pubkey: node2_pubkey,
-                                fee_base_msat: p.fee_base_msat as u64,
-                                fee_rate_milli_msat: p.fee_rate_milli_msat as u64,
-                                min_htlc_msat: p.min_htlc as u64,
-                                max_htlc_msat: if p.max_htlc_msat > 0 {
-                                    Some(p.max_htlc_msat as u64)
+                                fee_base_msat: routing_policy.fee_base_msat as u64,
+                                fee_rate_milli_msat: routing_policy.fee_rate_milli_msat as u64,
+                                min_htlc_msat: routing_policy.min_htlc as u64,
+                                max_htlc_msat: if routing_policy.max_htlc_msat > 0 {
+                                    Some(routing_policy.max_htlc_msat as u64)
                                 } else {
                                     None
                                 },
-                                time_lock_delta: p.time_lock_delta as u16,
-                                disabled: p.disabled,
+                                time_lock_delta: routing_policy.time_lock_delta as u16,
+                                disabled: routing_policy.disabled,
                                 last_update: Some(
                                     SystemTime::UNIX_EPOCH
-                                        + Duration::from_secs(p.last_update as u64),
+                                        + Duration::from_secs(routing_policy.last_update as u64),
                                 ),
                             });
 
-                            (p1, p2)
+                            (node1_policy, node2_policy)
                         } else {
                             (None, None)
                         }
@@ -542,33 +554,33 @@ impl LightningClient for LndNode {
                 };
 
                 Ok(ChannelDetails {
-                    channel_id: ShortChannelID(c.chan_id),
-                    local_balance_sat: c.local_balance.try_into().unwrap_or(0),
-                    remote_balance_sat: c.remote_balance.try_into().unwrap_or(0),
-                    capacity_sat: c.capacity.try_into().unwrap_or(0),
-                    active: c.active,
-                    private: c.private,
+                    channel_id: ShortChannelID(channel.chan_id),
+                    local_balance_sat: channel.local_balance.try_into().unwrap_or(0),
+                    remote_balance_sat: channel.remote_balance.try_into().unwrap_or(0),
+                    capacity_sat: channel.capacity.try_into().unwrap_or(0),
+                    active: channel.active,
+                    private: channel.private,
                     remote_pubkey,
-                    commit_fee_sat: Some(c.commit_fee as u64),
+                    commit_fee_sat: Some(channel.commit_fee as u64),
                     local_chan_reserve_sat: Some(
-                        c.local_constraints
+                        channel.local_constraints
                             .as_ref()
-                            .map(|lc| lc.chan_reserve_sat)
+                            .map(|local_constraints| local_constraints.chan_reserve_sat)
                             .unwrap_or(0),
                     ),
                     remote_chan_reserve_sat: Some(
-                        c.remote_constraints
+                        channel.remote_constraints
                             .as_ref()
-                            .map(|rc| rc.chan_reserve_sat)
+                            .map(|remote_constraints| remote_constraints.chan_reserve_sat)
                             .unwrap_or(0),
                     ),
-                    num_updates: Some(c.num_updates),
-                    total_satoshis_sent: Some(c.total_satoshis_sent as u64),
-                    total_satoshis_received: Some(c.total_satoshis_received as u64),
-                    channel_age_blocks: c.lifetime.try_into().ok(),
+                    num_updates: Some(channel.num_updates),
+                    total_satoshis_sent: Some(channel.total_satoshis_sent as u64),
+                    total_satoshis_received: Some(channel.total_satoshis_received as u64),
+                    channel_age_blocks: channel.lifetime.try_into().ok(),
                     last_update: None,
                     opening_cost_sat: None,
-                    initiator: Some(c.initiator),
+                    initiator: Some(channel.initiator),
                     txid: Some(channel_point.txid),
                     vout: Some(channel_point.vout),
                     node1_policy,
@@ -592,9 +604,9 @@ impl LightningClient for LndNode {
                 ..Default::default()
             })
             .await
-            .map_err(|e| {
-                tracing::error!("list_payments RPC failed: {}", e);
-                LightningError::RpcError(format!("LND list_payments error: {}", e))
+            .map_err(|err| {
+                tracing::error!("list_payments RPC failed: {}", err);
+                LightningError::RpcError(format!("LND list_payments error: {}", err))
             })?
             .into_inner();
 
@@ -603,7 +615,7 @@ impl LightningClient for LndNode {
         let Some(payment) = response
             .payments
             .into_iter()
-            .find(|p| p.payment_hash == hex_hash)
+            .find(|payment| payment.payment_hash == hex_hash)
         else {
             return Err(LightningError::NotFound(format!(
                 "Payment {} not found",
@@ -622,7 +634,7 @@ impl LightningClient for LndNode {
             .creation_time_ns
             .try_into()
             .ok()
-            .map(|ns: u64| UNIX_EPOCH + Duration::from_nanos(ns));
+            .map(|timestamp_nanos: u64| UNIX_EPOCH + Duration::from_nanos(timestamp_nanos));
 
         // Process HTLCs and extract destination pubkey from the last hop
         let (htlcs, destination_pubkey) = {
@@ -631,19 +643,19 @@ impl LightningClient for LndNode {
                 .htlcs
                 .into_iter()
                 .map(|htlc| {
-                    let route = htlc.route.map(|r| {
+                    let route = htlc.route.map(|raw_route| {
                         // Get destination pubkey from last hop if available
-                        if let Some(last_hop) = r.hops.last() {
+                        if let Some(last_hop) = raw_route.hops.last() {
                             if let Ok(pubkey) = PublicKey::from_str(&last_hop.pub_key) {
                                 destination_pubkey = Some(pubkey);
                             }
                         }
 
                         Route {
-                            total_time_lock: r.total_time_lock,
-                            total_fees: (r.total_fees_msat / 1000).try_into().unwrap_or(0),
-                            total_amt: (r.total_amt_msat / 1000).try_into().unwrap_or(0),
-                            hops: r
+                            total_time_lock: raw_route.total_time_lock,
+                            total_fees: (raw_route.total_fees_msat / 1000).try_into().unwrap_or(0),
+                            total_amt: (raw_route.total_amt_msat / 1000).try_into().unwrap_or(0),
+                            hops: raw_route
                                 .hops
                                 .into_iter()
                                 .map(|hop| Hop {
@@ -659,7 +671,7 @@ impl LightningClient for LndNode {
                     });
 
                     PaymentHtlc {
-                        routes: route.map_or_else(Vec::new, |r| vec![r]),
+                        routes: route.map_or_else(Vec::new, |route| vec![route]),
                         attempt_id: htlc.attempt_id,
                         attempt_time: Some(
                             UNIX_EPOCH + Duration::from_nanos(htlc.attempt_time_ns as u64),
@@ -667,8 +679,8 @@ impl LightningClient for LndNode {
                         resolve_time: Some(
                             UNIX_EPOCH + Duration::from_nanos(htlc.resolve_time_ns as u64),
                         ),
-                        failure_reason: htlc.failure.as_ref().map(|f| format!("{:?}", f.code())),
-                        failure_code: htlc.failure.as_ref().map(|f| f.code() as u16),
+                        failure_reason: htlc.failure.as_ref().map(|failure| format!("{:?}", failure.code())),
+                        failure_code: htlc.failure.as_ref().map(|failure| failure.code() as u16),
                     }
                 })
                 .collect();
@@ -679,12 +691,12 @@ impl LightningClient for LndNode {
         let network = self
             .get_network()
             .await
-            .map(|n| Some(n.to_string()))
+            .map(|network| Some(network.to_string()))
             .unwrap_or(None);
 
         let amount_sat: u64 = payment.value_sat.try_into().unwrap_or(0);
 
-        let amount_usd = get_converter().sats_to_usd(amount_sat).await?;
+        let amount_usd = self.price_converter.sats_to_usd(amount_sat).await?;
 
         Ok(PaymentDetails {
             state,
@@ -707,10 +719,10 @@ impl LightningClient for LndNode {
         let response = lightning_stub
             .list_payments(ListPaymentsRequest::default())
             .await
-            .map_err(|e| LightningError::RpcError(e.to_string()))?
+            .map_err(|err| LightningError::RpcError(err.to_string()))?
             .into_inner();
 
-        let btc_price = get_converter().fetch_btc_price().await?;
+        let btc_price = self.price_converter.fetch_btc_price().await?;
 
         Ok(response
             .payments
@@ -738,7 +750,7 @@ impl LightningClient for LndNode {
                         .creation_time_ns
                         .try_into()
                         .ok()
-                        .map(|ns: u64| SystemTime::UNIX_EPOCH + Duration::from_nanos(ns)),
+                        .map(|timestamp_nanos: u64| SystemTime::UNIX_EPOCH + Duration::from_nanos(timestamp_nanos)),
                     invoice: Some(payment.payment_request),
                     payment_hash: payment.payment_hash,
                     completed_at: payment.htlcs.last().map(|htlc| {
@@ -907,7 +919,7 @@ impl LightningClient for LndNode {
             .lightning()
             .list_invoices(request)
             .await
-            .map_err(|e| LightningError::RpcError(e.to_string()))?
+            .map_err(|err| LightningError::RpcError(err.to_string()))?
             .into_inner();
 
         let invoices = response
@@ -942,13 +954,13 @@ impl LightningClient for LndNode {
                     invoice
                         .features
                         .into_iter()
-                        .map(|(k, v)| {
+                        .map(|(feature_bit, feature_entry )| {
                             (
-                                k,
+                                feature_bit,
                                 Feature {
-                                    name: Some(v.name),
-                                    is_known: Some(v.is_known),
-                                    is_required: Some(v.is_required),
+                                    name: Some(feature_entry .name),
+                                    is_known: Some(feature_entry .is_known),
+                                    is_required: Some(feature_entry .is_required),
                                 },
                             )
                         })
@@ -959,7 +971,7 @@ impl LightningClient for LndNode {
                     memo: invoice.memo,
                     payment_hash: hex::encode(invoice.r_hash),
                     payment_preimage: Some(hex::encode(invoice.r_preimage))
-                        .filter(|s| !s.is_empty())
+                        .filter(|preimage_hex| !preimage_hex.is_empty())
                         .unwrap_or_default(),
                     value: invoice.value as u64,
                     value_msat: invoice.value_msat as u64,
@@ -971,7 +983,7 @@ impl LightningClient for LndNode {
                     state,
                     is_keysend: Some(invoice.is_keysend),
                     is_amp: Some(invoice.is_amp),
-                    payment_addr: Some(hex::encode(invoice.payment_addr)).filter(|s| !s.is_empty()),
+                    payment_addr: Some(hex::encode(invoice.payment_addr)).filter(|addr_hex| !addr_hex.is_empty()),
                     htlcs,
                     features,
                 }
@@ -1009,7 +1021,7 @@ impl LightningClient for LndNode {
             memo: response.memo,
             payment_hash: hex::encode(response.r_hash),
             payment_preimage: Some(hex::encode(response.r_preimage))
-                .filter(|s| !s.is_empty())
+                .filter(|preimage_hex| !preimage_hex.is_empty())
                 .unwrap_or_default(),
             value: response.value as u64,
             value_msat: response.value_msat as u64,
@@ -1021,7 +1033,7 @@ impl LightningClient for LndNode {
             state,
             is_keysend: Some(response.is_keysend),
             is_amp: Some(response.is_amp),
-            payment_addr: Some(hex::encode(response.payment_addr)).filter(|s| !s.is_empty()),
+            payment_addr: Some(hex::encode(response.payment_addr)).filter(|addr_hex| !addr_hex.is_empty()),
             htlcs: None,
             features: None,
         })
@@ -1078,7 +1090,7 @@ impl LightningClient for ClnNode {
         let response = client
             .list_peer_channels(ListpeerchannelsRequest { id: None })
             .await
-            .map_err(|e| LightningError::RpcError(e.to_string()))?
+            .map_err(|err| LightningError::RpcError(err.to_string()))?
             .into_inner();
 
         let _now = SystemTime::now()
@@ -1092,10 +1104,10 @@ impl LightningClient for ClnNode {
             .filter_map(|channel| {
                 let chan_id = channel.short_channel_id.as_ref()?.parse().ok()?; // u64
 
-                let capacity: u64 = channel.total_msat.as_ref().map(|a| a.msat).unwrap_or(0) / 1000;
+                let capacity: u64 = channel.total_msat.as_ref().map(|amt| amt.msat).unwrap_or(0) / 1000;
 
                 let local_balance: u64 =
-                    channel.to_us_msat.as_ref().map(|a| a.msat).unwrap_or(0) / 1000;
+                    channel.to_us_msat.as_ref().map(|amt| amt.msat).unwrap_or(0) / 1000;
 
                 let remote_balance = capacity.saturating_sub(local_balance);
 
@@ -1111,7 +1123,7 @@ impl LightningClient for ClnNode {
                     10 => ChannelState::Opening, // DUALOPEND_AWAITING_LOCKIN
                     _ => ChannelState::Disabled, // default/fallback
                 };
-                let alias = channel.alias.as_ref().and_then(|a| a.remote.clone());
+                let alias = channel.alias.as_ref().and_then(|channel_alias| channel_alias.remote.clone());
 
                 Some(ChannelSummary {
                     chan_id,
@@ -1143,49 +1155,49 @@ impl LightningClient for ClnNode {
                 ..Default::default()
             })
             .await
-            .map_err(|e| LightningError::ChannelError(format!("CLN list_channels error: {}", e)))?
+            .map_err(|err| LightningError::ChannelError(format!("CLN list_channels error: {}", err)))?
             .into_inner();
 
         let chan_opt = channels_response
             .channels
             .into_iter()
-            .find(|c| c.short_channel_id == channel_id.0.to_string());
+            .find(|channel| channel.short_channel_id == channel_id.0.to_string());
 
-        if let Some(chan) = chan_opt {
-            let remote_pubkey = PublicKey::from_slice(&chan.destination).map_err(|e| {
-                LightningError::ChannelError(format!("Invalid remote pubkey bytes: {}", e))
+        if let Some(channel) = chan_opt {
+            let remote_pubkey = PublicKey::from_slice(&channel.destination).map_err(|err| {
+                LightningError::ChannelError(format!("Invalid remote pubkey bytes: {}", err))
             })?;
 
-            let amount_msat = chan.amount_msat.as_ref();
+            let amount_msat = channel.amount_msat.as_ref();
             let capacity_sat = amount_msat.map(|amt| amt.msat / 1000).unwrap_or(0);
             let local_balance_sat = amount_msat.map(|amt| amt.msat / 2000).unwrap_or(0);
             let remote_balance_sat = capacity_sat.saturating_sub(local_balance_sat);
 
             // Get node policies
-            let node1_policy = if chan.source == self.info.pubkey.serialize().to_vec() {
+            let node1_policy = if channel.source == self.info.pubkey.serialize().to_vec() {
                 Some(NodePolicy {
                     pubkey: self.info.pubkey,
-                    fee_base_msat: chan.base_fee_millisatoshi as u64,
-                    fee_rate_milli_msat: chan.fee_per_millionth as u64,
-                    min_htlc_msat: chan.htlc_minimum_msat.as_ref().map_or(0, |amt| amt.msat),
-                    max_htlc_msat: chan.htlc_maximum_msat.as_ref().map(|amt| amt.msat),
-                    time_lock_delta: chan.delay as u16,
-                    disabled: !chan.active,
+                    fee_base_msat: channel.base_fee_millisatoshi as u64,
+                    fee_rate_milli_msat: channel.fee_per_millionth as u64,
+                    min_htlc_msat: channel.htlc_minimum_msat.as_ref().map_or(0, |amt| amt.msat),
+                    max_htlc_msat: channel.htlc_maximum_msat.as_ref().map(|amt| amt.msat),
+                    time_lock_delta: channel.delay as u16,
+                    disabled: !channel.active,
                     last_update: None,
                 })
             } else {
                 None
             };
 
-            let node2_policy = if chan.destination == self.info.pubkey.serialize().to_vec() {
+            let node2_policy = if channel.destination == self.info.pubkey.serialize().to_vec() {
                 Some(NodePolicy {
                     pubkey: remote_pubkey,
-                    fee_base_msat: chan.base_fee_millisatoshi as u64,
-                    fee_rate_milli_msat: chan.fee_per_millionth as u64,
-                    min_htlc_msat: chan.htlc_minimum_msat.as_ref().map_or(0, |amt| amt.msat),
-                    max_htlc_msat: chan.htlc_maximum_msat.as_ref().map(|amt| amt.msat),
-                    time_lock_delta: chan.delay as u16,
-                    disabled: !chan.active,
+                    fee_base_msat: channel.base_fee_millisatoshi as u64,
+                    fee_rate_milli_msat: channel.fee_per_millionth as u64,
+                    min_htlc_msat: channel.htlc_minimum_msat.as_ref().map_or(0, |amt| amt.msat),
+                    max_htlc_msat: channel.htlc_maximum_msat.as_ref().map(|amt| amt.msat),
+                    time_lock_delta: channel.delay as u16,
+                    disabled: !channel.active,
                     last_update: None,
                 })
             } else {
@@ -1197,8 +1209,8 @@ impl LightningClient for ClnNode {
                 local_balance_sat,
                 remote_balance_sat,
                 capacity_sat,
-                active: chan.active,
-                private: !chan.public,
+                active: channel.active,
+                private: !channel.public,
                 remote_pubkey,
                 commit_fee_sat: None,
                 local_chan_reserve_sat: None,
@@ -1234,7 +1246,7 @@ impl LightningClient for ClnNode {
                 ..Default::default()
             })
             .await
-            .map_err(|e| LightningError::RpcError(format!("CLN listpays error: {}", e)))?
+            .map_err(|err| LightningError::RpcError(format!("CLN listpays error: {}", err)))?
             .into_inner();
 
         let Some(payment) = response.pays.into_iter().last() else {
@@ -1259,11 +1271,11 @@ impl LightningClient for ClnNode {
         // Get destination pubkey
         let destination_pubkey = match &payment.destination {
             Some(hex_str) => {
-                let hex_str = String::from_utf8(hex_str.clone()).map_err(|e| {
-                    LightningError::Parse(format!("Invalid destination string: {}", e))
+                let hex_str = String::from_utf8(hex_str.clone()).map_err(|err| {
+                    LightningError::Parse(format!("Invalid destination string: {}", err))
                 })?;
-                let pubkey = PublicKey::from_str(&hex_str).map_err(|e| {
-                    LightningError::Parse(format!("Invalid destination pubkey: {}", e))
+                let pubkey = PublicKey::from_str(&hex_str).map_err(|err| {
+                    LightningError::Parse(format!("Invalid destination pubkey: {}", err))
                 })?;
                 Some(pubkey)
             }
@@ -1280,12 +1292,12 @@ impl LightningClient for ClnNode {
         let network = self
             .get_network()
             .await
-            .map(|n| Some(n.to_string()))
+            .map(|network| Some(network.to_string()))
             .unwrap_or(None);
 
         let amount_sat: u64 = payment.amount_msat.as_ref().map(|amt| amt.msat / 1000).unwrap_or(0);
 
-        let amount_usd = get_converter().sats_to_usd(amount_sat).await?;
+        let amount_usd = self.price_converter.sats_to_usd(amount_sat).await?;
 
         Ok(PaymentDetails {
             state,
@@ -1308,10 +1320,10 @@ impl LightningClient for ClnNode {
         let response = client
             .list_pays(cln_grpc::pb::ListpaysRequest::default())
             .await
-            .map_err(|e| LightningError::RpcError(e.to_string()))?
+            .map_err(|err| LightningError::RpcError(err.to_string()))?
             .into_inner();
 
-        let btc_price = get_converter().fetch_btc_price().await?;
+        let btc_price = self.price_converter.fetch_btc_price().await?;
 
         let summaries = response
             .pays
@@ -1348,7 +1360,7 @@ impl LightningClient for ClnNode {
                     .created_at
                     .try_into()
                     .ok()
-                    .map(|ts: u64| UNIX_EPOCH + Duration::from_secs(ts));
+                    .map(|timestamp: u64| UNIX_EPOCH + Duration::from_secs(timestamp));
 
                 Some(PaymentSummary {
                     state,
@@ -1358,7 +1370,7 @@ impl LightningClient for ClnNode {
                     creation_time,
                     invoice: payment.bolt11,
                     payment_hash: hex::encode(&payment.payment_hash),
-                    completed_at: payment.completed_at.map(|ts| ts.try_into().ok()).flatten(),
+                    completed_at: payment.completed_at.map(|timestamp| timestamp.try_into().ok()).flatten(),
                 })
             })
             .collect();
@@ -1386,7 +1398,7 @@ impl LightningClient for ClnNode {
         let response = client
             .list_invoices(cln_grpc::pb::ListinvoicesRequest::default())
             .await
-            .map_err(|e| LightningError::RpcError(e.to_string()))?
+            .map_err(|err| LightningError::RpcError(err.to_string()))?
             .into_inner();
 
         let now = chrono::Utc::now().timestamp() as u64;
@@ -1395,7 +1407,7 @@ impl LightningClient for ClnNode {
             .invoices
             .into_iter()
             .map(|invoice| {
-                let amount_msat = invoice.amount_msat.as_ref().map(|ms| ms.msat).unwrap_or(0);
+                let amount_msat = invoice.amount_msat.as_ref().map(|amt_msat| amt_msat.msat).unwrap_or(0);
                 let amount_sats = amount_msat / 1000;
 
                 let expires_at = invoice.expires_at;
@@ -1424,7 +1436,7 @@ impl LightningClient for ClnNode {
                     value_msat: amount_msat,
                     settled: None,
                     creation_date: None,
-                    settle_date: invoice.paid_at.map(|t| t as i64),
+                    settle_date: invoice.paid_at.map(|timestamp| timestamp as i64),
                     payment_request: invoice.bolt11.unwrap_or_default(),
                     expiry: Some(expires_at),
                     state,
@@ -1478,7 +1490,7 @@ impl LightningClient for ClnNode {
             }
         };
 
-        let amount_msat = invoice.amount_msat.as_ref().map(|ms| ms.msat).unwrap_or(0);
+        let amount_msat = invoice.amount_msat.as_ref().map(|amt_msat| amt_msat.msat).unwrap_or(0);
         let amount_sats = amount_msat / 1000;
 
         Ok(CustomInvoice {
@@ -1492,7 +1504,7 @@ impl LightningClient for ClnNode {
             value_msat: amount_msat,
             settled: None,
             creation_date: None,
-            settle_date: invoice.paid_at.map(|t| t as i64),
+            settle_date: invoice.paid_at.map(|timestamp| timestamp as i64),
             payment_request: invoice.bolt11.unwrap_or_default(),
             expiry: Some(invoice.expires_at),
             state,
@@ -1504,8 +1516,8 @@ impl LightningClient for ClnNode {
         })
     }
 }
-pub fn parse_channel_point(s: &str) -> Result<OutPoint, LightningError> {
-    let mut parts = s.split(':');
+pub fn parse_channel_point(channel_point_str: &str) -> Result<OutPoint, LightningError> {
+    let mut parts = channel_point_str.split(':');
     let txid_str = parts
         .next()
         .ok_or_else(|| LightningError::ValidationError("Missing txid".into()))?;
@@ -1514,10 +1526,10 @@ pub fn parse_channel_point(s: &str) -> Result<OutPoint, LightningError> {
         .ok_or_else(|| LightningError::ValidationError("Missing vout".into()))?;
 
     let txid = Txid::from_str(txid_str)
-        .map_err(|e| LightningError::ValidationError(format!("Invalid txid: {e}")))?;
+        .map_err(|err| LightningError::ValidationError(format!("Invalid txid: {err}")))?;
     let vout = vout_str
         .parse::<u32>()
-        .map_err(|e| LightningError::ValidationError(format!("Invalid vout: {e}")))?;
+        .map_err(|err| LightningError::ValidationError(format!("Invalid vout: {err}")))?;
 
     Ok(OutPoint { txid, vout })
 }

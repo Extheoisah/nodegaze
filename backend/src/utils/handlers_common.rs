@@ -5,6 +5,8 @@ use axum::http::StatusCode;
 use bitcoin::secp256k1::PublicKey;
 use lightning::ln::PaymentHash;
 use std::str::FromStr;
+use crate::utils::NodeId;
+use crate::services::node_manager::{LndNode, LndConnection, ClnNode, ClnConnection, LightningClient};
 
 /// Extract credentials from claims
 pub fn extract_node_credentials(claims: &Claims) -> Result<&NodeCredentials, (StatusCode, String)> {
@@ -19,6 +21,53 @@ pub fn extract_node_credentials(claims: &Claims) -> Result<&NodeCredentials, (St
             serde_json::to_string(&error_response).unwrap(),
         )
     })
+}
+
+/// Creates and returns a Lightning client (LND or CLN) based on the provided credentials.
+pub async fn create_node_client(
+    node_credentials: &NodeCredentials,
+    public_key: PublicKey,
+) -> Result<Box<dyn LightningClient>, (StatusCode, String)> {
+    match node_credentials.node_type.as_str() {
+        "lnd" => {
+            let lnd_node = LndNode::new(LndConnection {
+                id: NodeId::PublicKey(public_key),
+                address: node_credentials.address.clone(),
+                macaroon: node_credentials.macaroon.clone(),
+                cert: node_credentials.tls_cert.clone(),
+            })
+            .await
+            .map_err(|e| handle_node_error(e, "connect to LND node"))?;
+            
+            Ok(Box::new(lnd_node))
+        }
+        "cln" => {
+            let (client_cert, client_key, ca_cert) = extract_cln_tls_components(node_credentials)?;
+
+            let cln_node = ClnNode::new(ClnConnection {
+                id: NodeId::PublicKey(public_key),
+                address: node_credentials.address.clone(),
+                ca_cert,
+                client_cert,
+                client_key,
+            })
+            .await
+            .map_err(|e| handle_node_error(e, "connect to CLN node"))?;
+            
+            Ok(Box::new(cln_node))
+        }
+        _ => {
+            let error_response = ApiResponse::<()>::error(
+                "Unsupported node type".to_string(),
+                "unsupported_node_type",
+                None,
+            );
+            Err((
+                StatusCode::BAD_REQUEST,
+                serde_json::to_string(&error_response).unwrap(),
+            ))
+        }
+    }
 }
 
 /// Parse hex string into PaymentHash

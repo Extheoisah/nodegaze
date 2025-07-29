@@ -436,8 +436,8 @@ impl FromStr for ShortChannelID {
     }
 }
 
-impl fmt::Display for ShortChannelID {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for ShortChannelID {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
@@ -454,27 +454,27 @@ impl From<ShortChannelID> for u64 {
     }
 }
 
-impl std::str::FromStr for PaymentState {
+impl FromStr for PaymentState {
     type Err = String;
     
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "inflight" | "in_flight" => Ok(PaymentState::Inflight),
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input.to_lowercase().as_str() {
+            "inflight" => Ok(PaymentState::Inflight),
             "failed" => Ok(PaymentState::Failed),
             "settled" => Ok(PaymentState::Settled),
-            _ => Err(format!("Invalid payment state: {}", s)),
+            _ => Err(format!("Invalid payment state: {}", input)),
         }
     }
 }
 
-impl std::fmt::Display for PaymentState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
+impl Display for PaymentState {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let state = match self {
             PaymentState::Inflight => "inflight",
             PaymentState::Failed => "failed",
             PaymentState::Settled => "settled",
         };
-        write!(f, "{}", s)
+        write!(f, "{}", state)
     }
 }
 
@@ -488,35 +488,35 @@ impl PaymentState {
     }
 }
 
-impl std::fmt::Display for InvoiceStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
+impl Display for InvoiceStatus {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let status = match self {
             InvoiceStatus::Settled => "settled",
             InvoiceStatus::Open => "open",
             InvoiceStatus::Expired => "expired",
             InvoiceStatus::Failed => "failed",
         };
-        write!(f, "{}", s)
+        write!(f, "{}", status)
     }
 }
 
 impl FromStr for InvoiceStatus {
     type Err = String;
     
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input.to_lowercase().as_str() {
             "settled" => Ok(InvoiceStatus::Settled),
             "open" => Ok(InvoiceStatus::Open),
             "expired" => Ok(InvoiceStatus::Expired),
             "failed" => Ok(InvoiceStatus::Failed),
-            _ => Err(format!("Invalid invoice status: {}", s)),
+            _ => Err(format!("Invalid invoice status: {}", input)),
         }
     }
 }
 
-impl std::fmt::Display for ChannelState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
+impl Display for ChannelState {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let state = match self {
             ChannelState::Opening => "opening",
             ChannelState::Active => "active",
             ChannelState::Disabled => "disabled",
@@ -524,23 +524,22 @@ impl std::fmt::Display for ChannelState {
             ChannelState::Closed => "closed",
             ChannelState::Failed => "failed",
         };
-        write!(f, "{}", s)
+        write!(f, "{}", state)
     }
 }
 
 impl FromStr for ChannelState {
     type Err = String;
     
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input.to_lowercase().as_str() {
             "opening" => Ok(ChannelState::Opening),
             "active" => Ok(ChannelState::Active),
             "disabled" => Ok(ChannelState::Disabled),
             "closing" => Ok(ChannelState::Closing),
             "closed" => Ok(ChannelState::Closed),
             "failed" => Ok(ChannelState::Failed),
-            _ => Err(format!("Invalid channel state: {}", s)),
+            _ => Err(format!("Invalid channel state: {}", input)),
         }
     }
 }
-
