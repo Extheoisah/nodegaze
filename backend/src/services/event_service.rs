@@ -5,23 +5,26 @@ use crate::database::models::{
 };
 use crate::errors::{ServiceError, ServiceResult};
 use crate::repositories::event_repository::EventRepository;
+use crate::repositories::notification_repository::NotificationRepository;
 use crate::services::notification_dispatcher::NotificationDispatcher;
 use chrono::Utc;
+use serde_json;
 use serde_json::Value;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
 use uuid::Uuid;
 
 /// Service layer for event operations.
-pub struct EventService {
-    /// Notification dispatcher
+pub struct EventService<'a> {
+    pool: &'a SqlitePool,
     dispatcher: NotificationDispatcher,
 }
 
-impl EventService {
+impl<'a> EventService<'a> {
     /// Creates a new EventService instance.
-    pub fn new() -> Self {
+    pub fn new(pool: &'a SqlitePool) -> Self {
         Self {
+            pool,
             dispatcher: NotificationDispatcher::new(),
         }
     }
@@ -29,50 +32,50 @@ impl EventService {
     /// Creates and dispatches a new event.
     pub async fn create_and_dispatch_event(
         &self,
-        pool: &SqlitePool,
-        account_id: String,
-        user_id: String,
-        node_id: String,
-        node_alias: String,
-        event_type: EventType,
-        severity: EventSeverity,
-        title: String,
-        description: String,
-        data: HashMap<String, Value>,
+        mut create_event: CreateEvent,
     ) -> ServiceResult<Event> {
-        let event_data = serde_json::to_string(&data)
-            .map_err(|e| ServiceError::validation(format!("Invalid event data: {}", e)))?;
+        let event_repo = EventRepository::new(self.pool);
+        let notification_repo = NotificationRepository::new(self.pool);
 
-        let create_event = CreateEvent {
-            id: Uuid::now_v7().to_string(),
-            account_id,
-            user_id,
-            node_id,
-            node_alias,
-            event_type,
-            severity,
-            title,
-            description,
-            data: event_data,
-            timestamp: Utc::now(),
-        };
+        // Get all active notifications for this account
+        let notifications = notification_repo
+            .get_notifications_by_account_id(&create_event.account_id)
+            .await?;
 
-        // Save event to database
-        let repo = EventRepository::new(pool);
-        let event = repo.create_event(create_event).await?;
+        let active_notifications: Vec<_> = notifications.iter().filter(|n| n.is_active).collect();
 
-        // Dispatch to notification endpoints (async, don't wait)
-        let event_clone = event.clone();
-        let dispatcher = self.dispatcher.clone();
-        let pool_clone = pool.clone();
+        let mut created_events = Vec::new();
 
-        tokio::spawn(async move {
-            if let Err(e) = dispatcher.dispatch_event(&pool_clone, &event_clone).await {
-                tracing::error!("Failed to dispatch event {}: {}", event_clone.id, e);
+        // Create one event per notification endpoint
+        for notification in &active_notifications {
+            create_event.notifications_id = Some(notification.id.clone());
+            create_event.id = Uuid::now_v7().to_string(); // Generate new ID for each event
+
+            let event = event_repo.create_event(create_event.clone()).await?;
+            created_events.push(event);
+        }
+
+        // If no notifications, create event without notification_id
+        if active_notifications.is_empty() {
+            create_event.notifications_id = None;
+            let event = event_repo.create_event(create_event).await?;
+            created_events.push(event);
+        }
+
+        // Dispatch notifications for all created events
+        for event in &created_events {
+            if let Err(e) = self.dispatcher.dispatch_event(self.pool, event).await {
+                tracing::error!("Failed to dispatch event notifications: {}", e);
             }
-        });
+        }
 
-        Ok(event)
+        // Return the first event, or an error if none were created
+        created_events
+            .into_iter()
+            .next()
+            .ok_or_else(|| ServiceError::InternalError {
+                message: "No events were created".to_string(),
+            })
     }
 
     /// Retrieves events for an account with optional filters.
@@ -107,6 +110,7 @@ impl EventService {
                     severity: event.severity,
                     title: event.title,
                     description: event.description,
+                    notifications_id: event.notifications_id,
                     data,
                     timestamp: event.timestamp,
                     created_at: event.created_at,
@@ -171,8 +175,8 @@ impl EventService {
             }
         };
 
-        self.create_and_dispatch_event(
-            pool,
+        self.create_and_dispatch_event(CreateEvent {
+            id: Uuid::now_v7().to_string(),
             account_id,
             user_id,
             node_id,
@@ -181,12 +185,14 @@ impl EventService {
             severity,
             title,
             description,
-            data,
-        )
+            data: serde_json::to_string(&data).unwrap_or_else(|_| "{}".to_string()),
+            notifications_id: None,
+            timestamp: Utc::now(),
+        })
         .await
     }
 
-    /// Processes LND-specific events.
+    /// Processes LND-specific events.v4
     fn process_lnd_event(
         &self,
         lnd_event: &crate::services::event_manager::LNDEvent,
@@ -489,33 +495,5 @@ impl EventService {
             //     HashMap::new(),
             // ),
         }
-    }
-
-    /// Tests a notification endpoint.
-    pub async fn test_notification(
-        &self,
-        pool: &SqlitePool,
-        notification_id: &str,
-        account_id: &str,
-    ) -> ServiceResult<bool> {
-        let notification_repo =
-            crate::repositories::notification_repository::NotificationRepository::new(pool);
-        let notification = notification_repo
-            .get_notification_by_id(notification_id)
-            .await?
-            .ok_or_else(|| ServiceError::not_found("Notification", notification_id))?;
-
-        // Verify that the notification belongs to the account
-        if notification.account_id != account_id {
-            return Err(ServiceError::not_found("Notification", notification_id));
-        }
-
-        let result = self
-            .dispatcher
-            .test_notification(&notification)
-            .await
-            .map_err(|e| ServiceError::validation(format!("Test failed: {}", e)))?;
-
-        Ok(result)
     }
 }

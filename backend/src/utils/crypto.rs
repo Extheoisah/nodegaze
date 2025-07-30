@@ -131,11 +131,11 @@ pub fn generate_key() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
+    
     #[cfg(test)]
     mod tests {
         use super::*;
-        use std::env;
+        
 
         #[test]
         fn test_encrypt_decrypt() {

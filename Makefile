@@ -15,7 +15,7 @@ help:
 	@echo "  clean     - Clean build artifacts"
 
 # Complete setup process
-setup: createdb migrate prepare
+setup: reset createdb migrate
 	@echo "Setup complete! Ready to run the application."
 
 # Create the database
@@ -27,11 +27,6 @@ createdb:
 migrate:
 	@echo "Running database migrations..."
 	sqlx migrate run --source backend/migrations
-
-# Generate offline query data for SQLx
-prepare:
-	@echo "Generating offline query data for SQLx..."
-	cargo sqlx prepare --workspace
 
 # Run the application
 run:

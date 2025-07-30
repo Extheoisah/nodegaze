@@ -1,12 +1,16 @@
 //! Handler functions for notification management API endpoints.
 
-use crate::api::common::{ApiResponse, service_error_to_http};
-use crate::database::models::{CreateNotificationRequest, Notification, UpdateNotificationRequest};
+use crate::api::common::{
+    ApiResponse, PaginatedData, PaginationFilter, PaginationMeta, service_error_to_http,
+};
+use crate::database::models::{
+    CreateNotificationRequest, EventResponse, Notification, UpdateNotificationRequest,
+};
 use crate::services::notification_service::NotificationService;
 use crate::services::user_service::UserService;
 use crate::utils::jwt::Claims;
 use axum::{
-    extract::{Extension, Json, Path},
+    extract::{Extension, Json, Path, Query},
     http::StatusCode,
     response::Json as ResponseJson,
 };
@@ -114,6 +118,47 @@ pub async fn delete_notification(
             (),
             "Notification deleted successfully",
         ))),
+        Err(error) => Err(service_error_to_http(error)),
+    }
+}
+
+/// Retrieves events for a specific notification endpoint.
+#[axum::debug_handler]
+pub async fn get_notification_events(
+    Extension(pool): Extension<SqlitePool>,
+    Extension(claims): Extension<Claims>,
+    Path(id): Path<String>,
+    Query(pagination): Query<PaginationFilter>,
+) -> Result<ResponseJson<ApiResponse<PaginatedData<EventResponse>>>, (StatusCode, String)> {
+    let account_id = claims.account_id();
+
+    let service = NotificationService::new(&pool);
+
+    // Get events for the notification
+    match service
+        .get_events_for_notification(
+            &id,
+            account_id,
+            Some(pagination.limit() as i64),
+            Some(pagination.offset() as i64),
+        )
+        .await
+    {
+        Ok(events) => {
+            // Get total count
+            let total_count = service
+                .count_events_for_notification(&id, account_id)
+                .await
+                .map_err(service_error_to_http)?;
+
+            let paginated_data = PaginatedData::new(events, total_count as u64);
+            let pagination_meta = PaginationMeta::from_filter(&pagination, total_count as u64);
+
+            Ok(ResponseJson(ApiResponse::ok_paginated(
+                paginated_data,
+                pagination_meta,
+            )))
+        }
         Err(error) => Err(service_error_to_http(error)),
     }
 }

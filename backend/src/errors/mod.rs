@@ -82,9 +82,10 @@ pub enum ServiceError {
         #[from]
         source: anyhow::Error,
     },
-
     #[error("External service error: {message}")]
     ExternalService { message: String },
+    #[error("Internal error: {message}")]
+    InternalError { message: String },
 }
 
 pub type ServiceResult<T> = Result<T, ServiceError>;
@@ -126,6 +127,12 @@ impl ServiceError {
 
     pub fn external_service(message: impl Into<String>) -> Self {
         Self::ExternalService {
+            message: message.into(),
+        }
+    }
+
+    pub fn internal_error(message: impl Into<String>) -> Self {
+        Self::InternalError {
             message: message.into(),
         }
     }

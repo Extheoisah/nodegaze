@@ -373,6 +373,14 @@ pub fn service_error_to_http(error: ServiceError) -> (StatusCode, String) {
         ServiceError::ExternalService { message } => {
             (StatusCode::BAD_GATEWAY, "external_service_error", message)
         }
+        ServiceError::InternalError { message } => {
+            tracing::error!("Internal error: {}", message);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal_error",
+                "Internal server error".to_string(),
+            )
+        }
     };
 
     let error_response = ApiResponse::<()>::error(message, error_type, None);

@@ -10,7 +10,7 @@ pkgs.mkShell {
     # OpenSSL and build tools
     openssl        # OpenSSL library
     pkg-config     # Required for finding system libraries
-
+    protobuf       # Protocol Buffers library
   ];
 
   shellHook = ''
