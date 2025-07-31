@@ -14,13 +14,14 @@ use crate::{
     },
 };
 
+use async_stream;
 use async_trait::async_trait;
 use bitcoin::{Network, OutPoint, Txid, hashes::Hash, secp256k1::PublicKey};
 use cln_grpc::pb::{
     GetinfoRequest, ListchannelsRequest, ListnodesRequest, ListpeerchannelsRequest,
     node_client::NodeClient,
 };
-use futures::stream::{StreamExt};
+use futures::stream::StreamExt;
 use hex;
 use lightning::ln::{PaymentHash, features::NodeFeatures};
 use serde::{Deserialize, Serialize};
@@ -31,6 +32,7 @@ use std::{
     str::FromStr,
     time::{SystemTime, UNIX_EPOCH},
 };
+use tokio::sync::oneshot;
 use tokio::time::Duration;
 use tokio::{
     fs::File,
@@ -39,7 +41,6 @@ use tokio::{
     time::sleep,
 };
 use tokio_stream::Stream;
-use tokio::sync::oneshot;
 use tonic::transport::{Certificate, Channel, ClientTlsConfig, Identity};
 use tonic_lnd::{
     Client,
@@ -146,46 +147,66 @@ impl LndNode {
 
     async fn stream_channel_events(&self) -> Result<Streaming<ChannelEventUpdate>, LightningError> {
         println!("Attempting to subscribe to LND channel events...");
-        let mut client_guard = self.client.lock().await;
-        println!("Client lock acquired. (Step 1)");
-        let mut lightning_client = client_guard.lightning().clone();
+        let mut lightning_client = {
+            let mut client_guard = self.client.lock().await;
+            println!("Client lock acquired. (Step 1)");
+            let client = client_guard.lightning().clone();
+            println!("Client cloned, releasing lock. (Step 1)");
+            client
+            // Lock is released here when client_guard goes out of scope
+        };
 
         let (tx, rx) = oneshot::channel();
 
         tokio::spawn(async move {
             println!("[Spawned Task] Attempting LND channel events subscription...");
-            let subscription_result = lightning_client.subscribe_channel_events(ChannelEventSubscription {}).await;
+            let subscription_result = lightning_client
+                .subscribe_channel_events(ChannelEventSubscription {})
+                .await;
 
             let result_to_send = match subscription_result {
                 Ok(response) => {
                     println!("[Spawned Task] LND channel events subscription successful.");
                     Ok(response.into_inner())
-                },
+                }
                 Err(e) => {
-                    eprintln!("[Spawned Task] Error subscribing to LND channel events: {:?}", e);
+                    eprintln!(
+                        "[Spawned Task] Error subscribing to LND channel events: {:?}",
+                        e
+                    );
                     Err(LightningError::StreamingError(format!("{}", e)))
                 }
             };
 
             if let Err(val) = tx.send(result_to_send) {
-                eprintln!("[Spawned Task] Receiver for oneshot channel was dropped before sending result: {:?}", val);
+                eprintln!(
+                    "[Spawned Task] Receiver for oneshot channel was dropped before sending result: {:?}",
+                    val
+                );
             }
             println!("[Spawned Task] Finished subscription logic within spawned task.");
         });
-            
+
         let channel_event_stream: Streaming<ChannelEventUpdate> = match rx.await {
-                Ok(Ok(stream)) => {
-                    println!("Finished channel events subscription block (received stream handle from spawned task).");
-                    stream
-                },
-                Ok(Err(e)) => {
-                    eprintln!("Error received from spawned channel event subscription task: {:?}", e);
-                    return Err(e);
-                },
-                Err(e) => {
-                    eprintln!("Oneshot channel for channel events was cancelled: {:?}", e);
-                    return Err(LightningError::StreamingError("Channel event stream setup task failed or cancelled.".into()));
-                }
+            Ok(Ok(stream)) => {
+                println!(
+                    "Finished channel events subscription block (received stream handle from spawned task)."
+                );
+                stream
+            }
+            Ok(Err(e)) => {
+                eprintln!(
+                    "Error received from spawned channel event subscription task: {:?}",
+                    e
+                );
+                return Err(e);
+            }
+            Err(e) => {
+                eprintln!("Oneshot channel for channel events was cancelled: {:?}", e);
+                return Err(LightningError::StreamingError(
+                    "Channel event stream setup task failed or cancelled.".into(),
+                ));
+            }
         };
 
         Ok(channel_event_stream)
@@ -193,49 +214,69 @@ impl LndNode {
 
     async fn stream_invoice_events(&self) -> Result<Streaming<Invoice>, LightningError> {
         println!("Attempting to subscribe to LND invoice events...");
-        let mut client_guard = self.client.lock().await;
-        println!("Client lock acquired. (Step 2)");
-        let mut lightning_client = client_guard.lightning().clone();
+        let mut lightning_client = {
+            let mut client_guard = self.client.lock().await;
+            println!("Client lock acquired. (Step 2)");
+            let client = client_guard.lightning().clone();
+            println!("Client cloned, releasing lock. (Step 2)");
+            client
+            // Lock is released here when client_guard goes out of scope
+        };
 
         let (tx, rx) = oneshot::channel();
 
         tokio::spawn(async move {
             println!("[Spawned Task] Attempting LND invoice events subscription...");
-            let subscription_result = lightning_client.subscribe_invoices(InvoiceSubscription {
-                add_index: 0,
-                settle_index: 0,
-            }).await;
+            let subscription_result = lightning_client
+                .subscribe_invoices(InvoiceSubscription {
+                    add_index: 0,
+                    settle_index: 0,
+                })
+                .await;
 
             let result_to_send = match subscription_result {
                 Ok(response) => {
                     println!("[Spawned Task] LND invoice events subscription successful.");
                     Ok(response.into_inner())
-                },
+                }
                 Err(e) => {
-                    eprintln!("[Spawned Task] Error subscribing to LND invoice events: {:?}", e);
+                    eprintln!(
+                        "[Spawned Task] Error subscribing to LND invoice events: {:?}",
+                        e
+                    );
                     Err(LightningError::StreamingError(format!("{}", e)))
                 }
             };
 
             if let Err(val) = tx.send(result_to_send) {
-                eprintln!("[Spawned Task] Receiver for oneshot channel was dropped before sending result: {:?}", val);
+                eprintln!(
+                    "[Spawned Task] Receiver for oneshot channel was dropped before sending result: {:?}",
+                    val
+                );
             }
             println!("[Spawned Task] Finished subscription logic within spawned task.");
         });
-            
+
         let invoice_event_stream: Streaming<Invoice> = match rx.await {
-                Ok(Ok(stream)) => {
-                    println!("Finished invoice events subscription block (received stream handle from spawned task).");
-                    stream
-                },
-                Ok(Err(e)) => {
-                    eprintln!("Error received from spawned invoice event subscription task: {:?}", e);
-                    return Err(e);
-                },
-                Err(e) => {
-                    eprintln!("Oneshot channel for invoice events was cancelled: {:?}", e);
-                    return Err(LightningError::StreamingError("Invoice event stream setup task failed or cancelled.".into()));
-                }
+            Ok(Ok(stream)) => {
+                println!(
+                    "Finished invoice events subscription block (received stream handle from spawned task)."
+                );
+                stream
+            }
+            Ok(Err(e)) => {
+                eprintln!(
+                    "Error received from spawned invoice event subscription task: {:?}",
+                    e
+                );
+                return Err(e);
+            }
+            Err(e) => {
+                eprintln!("Oneshot channel for invoice events was cancelled: {:?}", e);
+                return Err(LightningError::StreamingError(
+                    "Invoice event stream setup task failed or cancelled.".into(),
+                ));
+            }
         };
 
         Ok(invoice_event_stream)
@@ -398,7 +439,19 @@ pub trait LightningClient: Send {
         payment_hash: &PaymentHash,
     ) -> Result<PaymentDetails, LightningError>;
     async fn list_payments(&self) -> Result<Vec<PaymentSummary>, LightningError>;
-    /// Returns a stream of raw events from the lightning node.
+    /// Returns a stream of channel events only.
+    async fn stream_channel_events_only(
+        &mut self,
+    ) -> Result<Pin<Box<dyn Stream<Item = NodeSpecificEvent> + Send>>, LightningError>;
+    /// Returns a stream of invoice events only.
+    async fn stream_invoice_events_only(
+        &mut self,
+    ) -> Result<Pin<Box<dyn Stream<Item = NodeSpecificEvent> + Send>>, LightningError>;
+    /// Returns a stream of payment events only.
+    async fn stream_payment_events_only(
+        &mut self,
+    ) -> Result<Pin<Box<dyn Stream<Item = NodeSpecificEvent> + Send>>, LightningError>;
+    /// Returns a stream of raw events from the lightning node (all events).
     async fn stream_events(
         &mut self,
     ) -> Result<Pin<Box<dyn Stream<Item = NodeSpecificEvent> + Send>>, LightningError>;
@@ -788,11 +841,85 @@ impl LightningClient for LndNode {
             .collect())
     }
 
-    async fn stream_events(
+    async fn stream_channel_events_only(
         &mut self,
     ) -> Result<Pin<Box<dyn Stream<Item = NodeSpecificEvent> + Send>>, LightningError> {
         let mut channel_events_stream = self.stream_channel_events().await?;
+
+        let channel_only_stream = async_stream::stream! {
+            while let Some(result) = channel_events_stream.next().await {
+                match result {
+                    Ok(update) => {
+                        if let Some(event) = process_channel_event(update) {
+                            yield event;
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error receiving LND channel event: {:?}", e);
+                    }
+                }
+            }
+        };
+
+        Ok(Box::pin(channel_only_stream))
+    }
+
+    async fn stream_invoice_events_only(
+        &mut self,
+    ) -> Result<Pin<Box<dyn Stream<Item = NodeSpecificEvent> + Send>>, LightningError> {
         let mut invoice_events_stream = self.stream_invoice_events().await?;
+
+        let invoice_only_stream = async_stream::stream! {
+            while let Some(result) = invoice_events_stream.next().await {
+                match result {
+                    Ok(invoice) => {
+                        if let Some(event) = process_invoice_event(invoice) {
+                            yield event;
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error receiving LND invoice event: {:?}", e);
+                    }
+                }
+            }
+        };
+
+        Ok(Box::pin(invoice_only_stream))
+    }
+
+    async fn stream_payment_events_only(
+        &mut self,
+    ) -> Result<Pin<Box<dyn Stream<Item = NodeSpecificEvent> + Send>>, LightningError> {
+        // For now, return empty stream as payment events are not implemented yet
+        let empty_stream = async_stream::stream! {
+            // Empty stream - payment events not yet implemented for LND
+            if false {
+                yield NodeSpecificEvent::LND(LNDEvent::ChannelOpened {
+                    active: false,
+                    remote_pubkey: String::new(),
+                    channel_point: String::new(),
+                    chan_id: 0,
+                    capacity: 0,
+                    local_balance: 0,
+                    remote_balance: 0,
+                    total_satoshis_sent: 0,
+                    total_satoshis_received: 0,
+                });
+            }
+        };
+
+        Ok(Box::pin(empty_stream))
+    }
+
+    async fn stream_events(
+        &mut self,
+    ) -> Result<Pin<Box<dyn Stream<Item = NodeSpecificEvent> + Send>>, LightningError> {
+        // Create both streams concurrently to avoid blocking
+        let (channel_events_result, invoice_events_result) =
+            tokio::join!(self.stream_channel_events(), self.stream_invoice_events());
+
+        let mut channel_events_stream = channel_events_result?;
+        let mut invoice_events_stream = invoice_events_result?;
 
         let combined_stream = async_stream::stream! {
             loop {
@@ -826,40 +953,6 @@ impl LightningClient for LndNode {
                 }
             };
         };
-      
-        /* let channel_events_filtered = channel_events_stream.filter_map(|result| { 
-                let event_opt = match result {
-                    Ok(update) => {
-                    
-                    }
-                    Err(e) => {
-                        eprintln!("Error receiving LND channel event: {:?}", e);
-                        None
-                    }
-                };
-                futures::future::ready(event_opt)
-        }); */
-
-        /*    let invoice_events_filtered = invoice_events_stream.filter_map(|result| {
-                let event_opt = match result {
-                    Ok(invoice) => {
-                    
-                    },
-                    Err(e) => {
-                        eprintln!("Error subscribing to LND channel events: {:?}", e);
-                        None
-                    }
-                };
-                futures::future::ready(event_opt)
-        }); */
-
-     /*    let merged_stream = select
-        (
-            channel_events_filtered, 
-            invoice_events_filtered
-        );
-
-        Ok(Box::pin(merged_stream)) */
 
         Ok(Box::pin(combined_stream))
     }
@@ -1345,6 +1438,51 @@ impl LightningClient for ClnNode {
         Ok(Box::pin(event_stream))
     }
 
+    async fn stream_channel_events_only(
+        &mut self,
+    ) -> Result<Pin<Box<dyn Stream<Item = NodeSpecificEvent> + Send>>, LightningError> {
+        let event_stream = async_stream::stream! {
+            let mut counter = 0;
+            loop {
+                sleep(Duration::from_millis(60)).await;
+                yield NodeSpecificEvent::CLN(CLNEvent::ChannelOpened {});
+                counter = counter + 1;
+            }
+        };
+
+        Ok(Box::pin(event_stream))
+    }
+
+    async fn stream_invoice_events_only(
+        &mut self,
+    ) -> Result<Pin<Box<dyn Stream<Item = NodeSpecificEvent> + Send>>, LightningError> {
+        // CLN invoice events would be implemented here
+        // For now, return empty stream as CLN events are not fully implemented
+        let event_stream = async_stream::stream! {
+            // Empty stream for now
+            if false {
+                yield NodeSpecificEvent::CLN(CLNEvent::ChannelOpened {});
+            }
+        };
+
+        Ok(Box::pin(event_stream))
+    }
+
+    async fn stream_payment_events_only(
+        &mut self,
+    ) -> Result<Pin<Box<dyn Stream<Item = NodeSpecificEvent> + Send>>, LightningError> {
+        // CLN payment events would be implemented here
+        // For now, return empty stream as CLN events are not fully implemented
+        let event_stream = async_stream::stream! {
+            // Empty stream for now
+            if false {
+                yield NodeSpecificEvent::CLN(CLNEvent::ChannelOpened {});
+            }
+        };
+
+        Ok(Box::pin(event_stream))
+    }
+
     async fn list_invoices(&self) -> Result<Vec<CustomInvoice>, LightningError> {
         let mut client = self.get_client_stub().await;
         let response = client
@@ -1488,109 +1626,101 @@ pub fn parse_channel_point(s: &str) -> Result<OutPoint, LightningError> {
 }
 
 fn process_channel_event(update: ChannelEventUpdate) -> Option<NodeSpecificEvent> {
-        match update.r#type() {
-            LndChannelUpdateType::OpenChannel => {
-                if let Some(event_channel) = update.channel {
-                    match event_channel {
-                        EventChannel::OpenChannel(chan) => {
-                            Some(NodeSpecificEvent::LND(LNDEvent::ChannelOpened {
-                                active: chan.active,
-                                remote_pubkey: chan.remote_pubkey,
-                                channel_point: chan.channel_point,
-                                chan_id: chan.chan_id,
-                                capacity: chan.capacity,
-                                local_balance: chan.local_balance,
-                                remote_balance: chan.remote_balance,
-                                total_satoshis_sent: chan.total_satoshis_sent,
-                                total_satoshis_received: chan.total_satoshis_received,
-                            }))
-                        }
-                            _ => {
-                                eprintln!("Unexpected channel variant for OpenChannel event");
-                                None
-                            }
-                        }
-                } else {
-                    None
-                }
-            },
-            LndChannelUpdateType::ClosedChannel => {
-                if let Some(event_channel) = update.channel {
-                    match event_channel {
-                        EventChannel::ClosedChannel(chan_close_sum) => {
-                            Some(NodeSpecificEvent::LND(LNDEvent::ChannelClosed {
-                                channel_point: chan_close_sum.channel_point,
-                                chan_id:  chan_close_sum.chan_id,
-                                chain_hash:  chan_close_sum.chain_hash,
-                                closing_tx_hash:  chan_close_sum.closing_tx_hash,
-                                remote_pubkey:  chan_close_sum.remote_pubkey,
-                                capacity:  chan_close_sum.capacity,
-                                close_height:  chan_close_sum.close_height,
-                                settled_balance:  chan_close_sum.settled_balance,
-                                time_locked_balance:  chan_close_sum.time_locked_balance,
-                                close_type:  chan_close_sum.close_type,
-                                open_initiator:  chan_close_sum.open_initiator,
-                                close_initiator:  chan_close_sum.close_initiator,
-                            }))
-                        }
-                        _ => {
-                            eprintln!("Unexpected channel variant for ClosedChannel event");
-                            None
-                        }
+    match update.r#type() {
+        LndChannelUpdateType::OpenChannel => {
+            if let Some(event_channel) = update.channel {
+                match event_channel {
+                    EventChannel::OpenChannel(chan) => {
+                        Some(NodeSpecificEvent::LND(LNDEvent::ChannelOpened {
+                            active: chan.active,
+                            remote_pubkey: chan.remote_pubkey,
+                            channel_point: chan.channel_point,
+                            chan_id: chan.chan_id,
+                            capacity: chan.capacity,
+                            local_balance: chan.local_balance,
+                            remote_balance: chan.remote_balance,
+                            total_satoshis_sent: chan.total_satoshis_sent,
+                            total_satoshis_received: chan.total_satoshis_received,
+                        }))
                     }
-                } else {
-                    None
+                    _ => {
+                        eprintln!("Unexpected channel variant for OpenChannel event");
+                        None
+                    }
                 }
-            },
-            _ => None,
+            } else {
+                None
+            }
         }
+        LndChannelUpdateType::ClosedChannel => {
+            if let Some(event_channel) = update.channel {
+                match event_channel {
+                    EventChannel::ClosedChannel(chan_close_sum) => {
+                        Some(NodeSpecificEvent::LND(LNDEvent::ChannelClosed {
+                            channel_point: chan_close_sum.channel_point,
+                            chan_id: chan_close_sum.chan_id,
+                            chain_hash: chan_close_sum.chain_hash,
+                            closing_tx_hash: chan_close_sum.closing_tx_hash,
+                            remote_pubkey: chan_close_sum.remote_pubkey,
+                            capacity: chan_close_sum.capacity,
+                            close_height: chan_close_sum.close_height,
+                            settled_balance: chan_close_sum.settled_balance,
+                            time_locked_balance: chan_close_sum.time_locked_balance,
+                            close_type: chan_close_sum.close_type,
+                            open_initiator: chan_close_sum.open_initiator,
+                            close_initiator: chan_close_sum.close_initiator,
+                        }))
+                    }
+                    _ => {
+                        eprintln!("Unexpected channel variant for ClosedChannel event");
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
 }
 
 fn process_invoice_event(invoice: Invoice) -> Option<NodeSpecificEvent> {
-        match invoice.state() {
-            InvoiceState::Open => {
-                Some(NodeSpecificEvent::LND(LNDEvent::InvoiceCreated {
-                        preimage: invoice.r_preimage,
-                        hash: invoice.r_hash,
-                        value_msat: invoice.value_msat,
-                        state: invoice.state,
-                        memo: invoice.memo,
-                        creation_date: invoice.creation_date,
-                        payment_request: invoice.payment_request,
-                }))
-            }
-            InvoiceState::Settled => {
-                Some(NodeSpecificEvent::LND(LNDEvent::InvoiceSettled {
-                        preimage: invoice.r_preimage,
-                        hash: invoice.r_hash,
-                        value_msat: invoice.value_msat,
-                        state: invoice.state,
-                        memo: invoice.memo,
-                        creation_date: invoice.creation_date,
-                        payment_request: invoice.payment_request,
-                }))
-            }
-            InvoiceState::Canceled => {
-                Some(NodeSpecificEvent::LND(LNDEvent::InvoiceCancelled {
-                        preimage: invoice.r_preimage,
-                        hash: invoice.r_hash,
-                        value_msat: invoice.value_msat,
-                        state: invoice.state,
-                        memo: invoice.memo,
-                        creation_date: invoice.creation_date,
-                        payment_request: invoice.payment_request,
-                }))
-            }
-            InvoiceState::Accepted => {
-                Some(NodeSpecificEvent::LND(LNDEvent::InvoiceAccepted {
-                        preimage: invoice.r_preimage,
-                        hash: invoice.r_hash,
-                        value_msat: invoice.value_msat,
-                        state: invoice.state,
-                        memo: invoice.memo,
-                        creation_date: invoice.creation_date,
-                        payment_request: invoice.payment_request,
-                }))
-            }
-        }
+    match invoice.state() {
+        InvoiceState::Open => Some(NodeSpecificEvent::LND(LNDEvent::InvoiceCreated {
+            preimage: invoice.r_preimage,
+            hash: invoice.r_hash,
+            value_msat: invoice.value_msat,
+            state: invoice.state,
+            memo: invoice.memo,
+            creation_date: invoice.creation_date,
+            payment_request: invoice.payment_request,
+        })),
+        InvoiceState::Settled => Some(NodeSpecificEvent::LND(LNDEvent::InvoiceSettled {
+            preimage: invoice.r_preimage,
+            hash: invoice.r_hash,
+            value_msat: invoice.value_msat,
+            state: invoice.state,
+            memo: invoice.memo,
+            creation_date: invoice.creation_date,
+            payment_request: invoice.payment_request,
+        })),
+        InvoiceState::Canceled => Some(NodeSpecificEvent::LND(LNDEvent::InvoiceCancelled {
+            preimage: invoice.r_preimage,
+            hash: invoice.r_hash,
+            value_msat: invoice.value_msat,
+            state: invoice.state,
+            memo: invoice.memo,
+            creation_date: invoice.creation_date,
+            payment_request: invoice.payment_request,
+        })),
+        InvoiceState::Accepted => Some(NodeSpecificEvent::LND(LNDEvent::InvoiceAccepted {
+            preimage: invoice.r_preimage,
+            hash: invoice.r_hash,
+            value_msat: invoice.value_msat,
+            state: invoice.state,
+            memo: invoice.memo,
+            creation_date: invoice.creation_date,
+            payment_request: invoice.payment_request,
+        })),
+    }
 }
