@@ -28,17 +28,34 @@ interface NotificationDetails {
   deleted_at: string | null;
 }
 
-interface MessageAttempt {
+interface EventData {
+  [key: string]: any;
+}
+
+interface Event {
   id: string;
-  event_id: string;
-  status: "Succeeded" | "Failed";
-  event_type:
-    | "InvoiceCreated"
-    | "InvoiceSettled"
-    | "ChannelOpened"
-    | "ChannelClosed";
-  message_id: string;
-  date: string;
+  account_id: string;
+  user_id: string;
+  node_id: string;
+  node_alias: string;
+  event_type: "InvoiceCreated" | "InvoiceSettled" | "ChannelOpened" | "ChannelClosed";
+  severity: "Info" | "Warning" | "Error";
+  title: string;
+  description: string;
+  notifications_id: string;
+  data: EventData;
+  timestamp: string;
+  created_at: string;
+}
+
+interface EventsResponse {
+  success: boolean;
+  data: {
+    items: Event[];
+    total: number;
+  };
+  message: string;
+  timestamp: string;
 }
 
 export default function EndpointDetailsPage() {
@@ -47,111 +64,98 @@ export default function EndpointDetailsPage() {
   const [notification, setNotification] = useState<NotificationDetails | null>(
     null
   );
-  const [messageAttempts, setMessageAttempts] = useState<MessageAttempt[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>("");
   const [showSecret, setShowSecret] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  const webhookId = params.id as string;
+  const notificationId = params.id as string;
 
-  // Mock data for message attempts (in a real app, this would come from an API)
-  const mockMessageAttempts: MessageAttempt[] = [
-    {
-      id: "1",
-      event_id: "01983ca4-f7df-7122-8301-590d840e5dd0",
-      status: "Succeeded",
-      event_type: "InvoiceSettled",
-      message_id: "msg_ighwfgtuydclgjhvsydtfguv",
-      date: "15th Feb, 2025 14:40",
-    },
-    {
-      id: "2",
-      event_id: "01983ca4-f7df-7122-8301-590d840e5dd1",
-      status: "Failed",
-      event_type: "ChannelOpened",
-      message_id: "msg_abc123def456ghi789",
-      date: "15th Feb, 2025 13:25",
-    },
-    {
-      id: "3",
-      event_id: "01983ca4-f7df-7122-8301-590d840e5dd2",
-      status: "Succeeded",
-      event_type: "InvoiceCreated",
-      message_id: "msg_xyz789uvw456rst123",
-      date: "15th Feb, 2025 12:10",
-    },
-    {
-      id: "4",
-      event_id: "01983ca4-f7df-7122-8301-590d840e5dd3",
-      status: "Succeeded",
-      event_type: "ChannelClosed",
-      message_id: "msg_qwe987asd654zxc321",
-      date: "15th Feb, 2025 11:55",
-    },
-    {
-      id: "5",
-      event_id: "01983ca4-f7df-7122-8301-590d840e5dd4",
-      status: "Failed",
-      event_type: "InvoiceSettled",
-      message_id: "msg_mno765pqr432stu987",
-      date: "15th Feb, 2025 10:30",
-    },
-  ];
-
-  const totalPages = Math.ceil(messageAttempts.length / itemsPerPage);
+  const totalPages = Math.ceil(events.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const currentData = messageAttempts.slice(
+  const currentData = events.slice(
     startIndex,
     startIndex + itemsPerPage
   );
 
-  const fetchNotificationDetails = async () => {
-    if (!webhookId) return;
+  const fetchNotificationAndEvents = async () => {
+    if (!notificationId) return;
 
     setIsLoading(true);
     setError("");
 
     try {
-      const response = await fetch("/api/notifications", {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
+      // Fetch notifications and events in parallel
+      const [notificationsResponse, eventsResponse] = await Promise.all([
+        fetch("/api/notifications", {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }),
+        fetch("/api/events", {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        })
+      ]);
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        if (response.status === 401) {
+      // Handle notifications response
+      if (!notificationsResponse.ok) {
+        if (notificationsResponse.status === 401) {
           router.push("/login");
           return;
         }
-        throw new Error(result.error || "Failed to fetch notification details");
+        throw new Error("Failed to fetch notification details");
       }
-      console.log("Notification details result:", result);
 
-      if (result.success && result.data) {
-        // Find the notification by URL or some other identifier
-        // For now, we'll use the first one as a placeholder
-        const foundNotification =
-          result.data.find((notif: NotificationDetails) =>
-            notif.url.includes(decodeURIComponent(webhookId))
-          ) || result.data[0];
+      // Handle events response
+      if (!eventsResponse.ok) {
+        if (eventsResponse.status === 401) {
+          router.push("/login");
+          return;
+        }
+        throw new Error("Failed to fetch events");
+      }
+
+      const notificationsResult = await notificationsResponse.json();
+      const eventsResult: EventsResponse = await eventsResponse.json();
+
+      console.log("Notifications result:", notificationsResult);
+      console.log("Events result:", eventsResult);
+
+      // Find the notification by ID
+      if (notificationsResult.success && notificationsResult.data) {
+        const foundNotification = notificationsResult.data.find(
+          (notif: NotificationDetails) => notif.id === notificationId
+        );
 
         if (foundNotification) {
           setNotification(foundNotification);
-          // In a real app, you would fetch message attempts for this specific notification
-          setMessageAttempts(mockMessageAttempts);
         } else {
           setError("Notification not found");
+          return;
         }
       } else {
         setError("Failed to load notification details");
+        return;
       }
+
+      // Filter events by notification ID
+      if (eventsResult.success && eventsResult.data) {
+        const filteredEvents = eventsResult.data.items.filter(
+          (event: Event) => event.notifications_id === notificationId
+        );
+        setEvents(filteredEvents);
+      } else {
+        setError("Failed to load events");
+      }
+
     } catch (error) {
-      console.error("Failed to fetch notification details:", error);
+      console.error("Failed to fetch data:", error);
       setError(
         error instanceof Error
           ? error.message
@@ -163,9 +167,9 @@ export default function EndpointDetailsPage() {
   };
 
   useEffect(() => {
-    fetchNotificationDetails();
+    fetchNotificationAndEvents();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [webhookId, router]);
+  }, [notificationId, router]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString("en-US", {
@@ -180,6 +184,19 @@ export default function EndpointDetailsPage() {
   const formatEventType = (eventType: string) => {
     // Convert camelCase to Title Case with spaces
     return eventType.replace(/([A-Z])/g, " $1").trim();
+  };
+
+  const getSeverityColor = (severity: string) => {
+    switch (severity) {
+      case "Info":
+        return "bg-blue-100 text-blue-800";
+      case "Warning":
+        return "bg-yellow-100 text-yellow-800";
+      case "Error":
+        return "bg-red-100 text-red-800";
+      default:
+        return "bg-gray-100 text-gray-800";
+    }
   };
 
   const getPaginationNumbers = () => {
@@ -249,11 +266,11 @@ export default function EndpointDetailsPage() {
             Back
           </Button>
           <div className="text-sm text-muted-foreground">
-            Events &gt; Event Details
+            Events &gt; Notification Events
           </div>
         </div>
 
-        <h1 className="text-3xl font-bold text-grey-dark">Endpoint Details</h1>
+        <h1 className="text-3xl font-bold text-grey-dark">Notification Events</h1>
 
         {/* Notification Details */}
         <div className="bg-white rounded-xl border">
@@ -354,32 +371,38 @@ export default function EndpointDetailsPage() {
             size="sm"
             className="bg-blue-primary text-white"
           >
-            All{" "}
+            All Events{" "}
             <span className="ml-1 bg-white text-blue-primary px-2 py-0.5 rounded-full text-xs">
-              {messageAttempts.length}
+              {events.length}
             </span>
           </Button>
           <Button variant="outline" size="sm">
-            Succeeded{" "}
+            Info{" "}
             <span className="ml-1 bg-gray-100 px-2 py-0.5 rounded-full text-xs">
-              {messageAttempts.filter((m) => m.status === "Succeeded").length}
+              {events.filter((e) => e.severity === "Info").length}
             </span>
           </Button>
           <Button variant="outline" size="sm">
-            Failed{" "}
+            Warning{" "}
             <span className="ml-1 bg-gray-100 px-2 py-0.5 rounded-full text-xs">
-              {messageAttempts.filter((m) => m.status === "Failed").length}
+              {events.filter((e) => e.severity === "Warning").length}
+            </span>
+          </Button>
+          <Button variant="outline" size="sm">
+            Error{" "}
+            <span className="ml-1 bg-gray-100 px-2 py-0.5 rounded-full text-xs">
+              {events.filter((e) => e.severity === "Error").length}
             </span>
           </Button>
         </div>
 
-        {/* Message Attempts */}
+        {/* Events */}
         <div className="bg-white rounded-xl border">
           <div className="p-6 border-b">
             <h2 className="text-lg font-medium text-grey-dark">
-              Message Attempts{" "}
+              Events{" "}
               <span className="text-sm font-normal text-grey-accent">
-                {messageAttempts.length}
+                {events.length}
               </span>
             </h2>
           </div>
@@ -388,18 +411,20 @@ export default function EndpointDetailsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-grey-table-header font-medium text-sm py-3 px-6">
-                    Status
+                    Severity
                   </TableHead>
                   <TableHead className="text-grey-table-header font-medium text-sm py-3 px-6">
                     Event Type
                   </TableHead>
                   <TableHead className="text-grey-table-header font-medium text-sm py-3 px-6">
-                    Message ID
+                    Description
                   </TableHead>
                   <TableHead className="text-grey-table-header font-medium text-sm py-3 px-6">
-                    Date
+                    Node
                   </TableHead>
-                  <TableHead className="text-grey-table-header font-medium text-sm py-3 px-6"></TableHead>
+                  <TableHead className="text-grey-table-header font-medium text-sm py-3 px-6">
+                    Timestamp
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -409,44 +434,43 @@ export default function EndpointDetailsPage() {
                       colSpan={5}
                       className="px-6 py-8 text-center text-grey-accent"
                     >
-                      No message attempts found.
+                      No events found for this notification.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  currentData.map((attempt) => (
+                  currentData.map((event) => (
                     <TableRow
-                      key={attempt.id}
+                      key={event.id}
                       className="cursor-pointer hover:bg-gray-50"
                       onClick={() =>
                         router.push(
-                          `/events/${webhookId}/message?eventId=${attempt.event_id}`
+                          `/events/${notificationId}/message?eventId=${event.id}`
                         )
                       }
                     >
                       <TableCell className="px-6 py-4">
                         <span
-                          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                            attempt.status === "Succeeded"
-                              ? "bg-green-100 text-green-800"
-                              : "bg-red-100 text-red-800"
-                          }`}
+                          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getSeverityColor(event.severity)}`}
                         >
-                          {attempt.status}
+                          {event.severity}
                         </span>
                       </TableCell>
                       <TableCell className="px-6 py-4 text-sm text-grey-dark">
-                        {formatEventType(attempt.event_type)}
+                        {formatEventType(event.event_type)}
                       </TableCell>
-                      <TableCell className="px-6 py-4 text-sm text-grey-dark font-mono">
-                        {attempt.message_id}
+                      <TableCell className="px-6 py-4 text-sm text-grey-dark max-w-md truncate">
+                        {event.description}
                       </TableCell>
                       <TableCell className="px-6 py-4 text-sm text-grey-dark">
-                        {attempt.date}
+                        <div>
+                          <div className="font-medium">{event.node_alias}</div>
+                          <div className="text-xs text-grey-accent font-mono">
+                            {event.node_id.substring(0, 16)}...
+                          </div>
+                        </div>
                       </TableCell>
-                      <TableCell className="px-6 py-4">
-                        <Button variant="ghost" className="h-8 w-8 p-0">
-                          <ChevronDown className="h-4 w-4 rotate-[-90deg]" />
-                        </Button>
+                      <TableCell className="px-6 py-4 text-sm text-grey-dark">
+                        {formatDate(event.timestamp)}
                       </TableCell>
                     </TableRow>
                   ))
