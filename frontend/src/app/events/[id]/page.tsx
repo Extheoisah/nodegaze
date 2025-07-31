@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ArrowLeft, Eye, EyeOff, ChevronDown } from "lucide-react";
+import Link from "next/link";
 
 interface NotificationDetails {
   id: string;
@@ -21,6 +22,7 @@ interface NotificationDetails {
   name: string;
   notification_type: "Webhook" | "Discord";
   url: string;
+  secret?: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -38,7 +40,11 @@ interface Event {
   user_id: string;
   node_id: string;
   node_alias: string;
-  event_type: "InvoiceCreated" | "InvoiceSettled" | "ChannelOpened" | "ChannelClosed";
+  event_type:
+    | "InvoiceCreated"
+    | "InvoiceSettled"
+    | "ChannelOpened"
+    | "ChannelClosed";
   severity: "Info" | "Warning" | "Error";
   title: string;
   description: string;
@@ -69,13 +75,20 @@ export default function EndpointDetailsPage() {
   const [error, setError] = useState<string>("");
   const [showSecret, setShowSecret] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [severityFilter, setSeverityFilter] = useState<string>("all");
   const itemsPerPage = 10;
 
   const notificationId = params.id as string;
 
-  const totalPages = Math.ceil(events.length / itemsPerPage);
+  // Filter events based on severity filter
+  const filteredEvents = events.filter((event) => {
+    if (severityFilter === "all") return true;
+    return event.severity === severityFilter;
+  });
+
+  const totalPages = Math.ceil(filteredEvents.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const currentData = events.slice(
+  const currentData = filteredEvents.slice(
     startIndex,
     startIndex + itemsPerPage
   );
@@ -100,7 +113,7 @@ export default function EndpointDetailsPage() {
           headers: {
             "Content-Type": "application/json",
           },
-        })
+        }),
       ]);
 
       // Handle notifications response
@@ -153,7 +166,6 @@ export default function EndpointDetailsPage() {
       } else {
         setError("Failed to load events");
       }
-
     } catch (error) {
       console.error("Failed to fetch data:", error);
       setError(
@@ -170,6 +182,11 @@ export default function EndpointDetailsPage() {
     fetchNotificationAndEvents();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notificationId, router]);
+
+  // Reset page when filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [severityFilter]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString("en-US", {
@@ -233,14 +250,13 @@ export default function EndpointDetailsPage() {
       <AppLayout>
         <div className="space-y-6">
           <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              onClick={() => router.push("/events")}
-              className="flex items-center gap-2"
+            <Link
+              href="/events"
+              className="flex items-center gap-2 p-2 rounded-md border border-grey-dark/15 bg-transparent text-grey-dark hover:text-grey-dark hover:bg-grey-sub-background cursor-pointer"
             >
               <ArrowLeft className="h-4 w-4" />
               Back
-            </Button>
+            </Link>
           </div>
           <div className="text-center py-16">
             <p className="text-red-500 text-lg">
@@ -257,20 +273,25 @@ export default function EndpointDetailsPage() {
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            onClick={() => router.push("/events")}
-            className="flex items-center gap-2"
+          <Link
+            href="/events"
+            className="flex items-center gap-2 p-2 rounded-md border border-grey-dark/15 bg-transparent text-grey-dark hover:text-grey-dark hover:bg-grey-sub-background cursor-pointer"
           >
             <ArrowLeft className="h-4 w-4" />
             Back
-          </Button>
+          </Link>
           <div className="text-sm text-muted-foreground">
-            Events &gt; Notification Events
+            <span className="text-grey-accent">
+              <Link href="/events">Events</Link>
+            </span>{" "}
+            <span className="text-grey-accent">&gt;</span>{" "}
+            <span className="text-blue-primary">{notification?.id}</span>
           </div>
         </div>
 
-        <h1 className="text-3xl font-bold text-grey-dark">Notification Events</h1>
+        <h1 className="text-3xl font-bold text-grey-dark">
+          Notification Events
+        </h1>
 
         {/* Notification Details */}
         <div className="bg-white rounded-xl border">
@@ -303,11 +324,13 @@ export default function EndpointDetailsPage() {
                     <label className="text-sm text-grey-accent">Secret</label>
                     <div className="flex items-center gap-2 mt-1">
                       <p className="text-sm text-grey-dark font-mono">
-                        {showSecret ? "your-webhook-secret" : "••••••••"}
+                        {showSecret
+                          ? notification?.secret || "null"
+                          : "••••••••"}
                       </p>
                       <Button
-                        variant="ghost"
                         size="sm"
+                        className="bg-transparent text-grey-dark hover:text-grey-dark hover:bg-grey-sub-background cursor-pointer"
                         onClick={() => setShowSecret(!showSecret)}
                       >
                         {showSecret ? (
@@ -319,7 +342,7 @@ export default function EndpointDetailsPage() {
                     </div>
                   </div>
                 )}
-                <div>
+                {/* <div>
                   <label className="text-sm text-grey-accent">Fail</label>
                   <div className="flex items-center gap-2 mt-1">
                     <span className="text-lg font-semibold text-grey-dark">
@@ -327,7 +350,7 @@ export default function EndpointDetailsPage() {
                     </span>
                     <span className="text-sm text-red-500">27.7%</span>
                   </div>
-                </div>
+                </div> */}
               </div>
               <div className="space-y-6">
                 <div>
@@ -350,14 +373,20 @@ export default function EndpointDetailsPage() {
                   <label className="text-sm text-grey-accent">Success</label>
                   <div className="flex items-center gap-2 mt-1">
                     <span className="text-lg font-semibold text-grey-dark">
-                      500
+                      {events.filter((e) => e.severity === "Info").length}
                     </span>
-                    <span className="text-sm text-success-green">72.3%</span>
+                    <span className="text-sm text-success-green">
+                      {events.length > 0
+                        ? (
+                            (events.filter((e) => e.severity === "Info")
+                              .length /
+                              events.length) *
+                            100
+                          ).toFixed(1)
+                        : "0"}
+                      %
+                    </span>
                   </div>
-                </div>
-                <div>
-                  <label className="text-sm text-grey-accent">Sending</label>
-                  <p className="text-lg font-semibold text-grey-dark mt-1">5</p>
                 </div>
               </div>
             </div>
@@ -367,30 +396,86 @@ export default function EndpointDetailsPage() {
         {/* Status Tabs */}
         <div className="flex gap-4">
           <Button
-            variant="default"
-            size="sm"
-            className="bg-blue-primary text-white"
+            variant={severityFilter === "all" ? "default" : "outline"}
+            size="lg"
+            className={
+              severityFilter === "all"
+                ? "bg-blue-primary text-white hover:bg-blue-primary"
+                : "bg-transparent text-grey-dark hover:text-grey-dark hover:bg-grey-sub-background cursor-pointer"
+            }
+            onClick={() => setSeverityFilter("all")}
           >
             All Events{" "}
-            <span className="ml-1 bg-white text-blue-primary px-2 py-0.5 rounded-full text-xs">
+            <span
+              className={`ml-1 px-2 py-0.5 rounded-full text-xs ${
+                severityFilter === "all"
+                  ? "bg-white text-blue-primary"
+                  : "bg-gray-100"
+              }`}
+            >
               {events.length}
             </span>
           </Button>
-          <Button variant="outline" size="sm">
+          <Button
+            variant={severityFilter === "Info" ? "default" : "outline"}
+            size="lg"
+            className={
+              severityFilter === "Info"
+                ? "bg-blue-primary text-white hover:bg-blue-primary"
+                : "bg-transparent text-grey-dark hover:text-grey-dark hover:bg-grey-sub-background cursor-pointer"
+            }
+            onClick={() => setSeverityFilter("Info")}
+          >
             Info{" "}
-            <span className="ml-1 bg-gray-100 px-2 py-0.5 rounded-full text-xs">
+            <span
+              className={`ml-1 px-2 py-0.5 rounded-full text-xs ${
+                severityFilter === "Info"
+                  ? "bg-white text-blue-primary"
+                  : "bg-gray-100"
+              }`}
+            >
               {events.filter((e) => e.severity === "Info").length}
             </span>
           </Button>
-          <Button variant="outline" size="sm">
+          <Button
+            variant={severityFilter === "Warning" ? "default" : "outline"}
+            size="lg"
+            className={
+              severityFilter === "Warning"
+                ? "bg-blue-primary text-white hover:bg-blue-primary"
+                : "bg-transparent text-grey-dark hover:text-grey-dark hover:bg-grey-sub-background cursor-pointer"
+            }
+            onClick={() => setSeverityFilter("Warning")}
+          >
             Warning{" "}
-            <span className="ml-1 bg-gray-100 px-2 py-0.5 rounded-full text-xs">
+            <span
+              className={`ml-1 px-2 py-0.5 rounded-full text-xs ${
+                severityFilter === "Warning"
+                  ? "bg-white text-blue-primary"
+                  : "bg-gray-100"
+              }`}
+            >
               {events.filter((e) => e.severity === "Warning").length}
             </span>
           </Button>
-          <Button variant="outline" size="sm">
+          <Button
+            variant={severityFilter === "Error" ? "default" : "outline"}
+            size="lg"
+            className={
+              severityFilter === "Error"
+                ? "bg-blue-primary text-white hover:bg-blue-primary"
+                : "bg-transparent text-grey-dark hover:text-grey-dark hover:bg-grey-sub-background cursor-pointer"
+            }
+            onClick={() => setSeverityFilter("Error")}
+          >
             Error{" "}
-            <span className="ml-1 bg-gray-100 px-2 py-0.5 rounded-full text-xs">
+            <span
+              className={`ml-1 px-2 py-0.5 rounded-full text-xs ${
+                severityFilter === "Error"
+                  ? "bg-white text-blue-primary"
+                  : "bg-gray-100"
+              }`}
+            >
               {events.filter((e) => e.severity === "Error").length}
             </span>
           </Button>
@@ -399,12 +484,7 @@ export default function EndpointDetailsPage() {
         {/* Events */}
         <div className="bg-white rounded-xl border">
           <div className="p-6 border-b">
-            <h2 className="text-lg font-medium text-grey-dark">
-              Events{" "}
-              <span className="text-sm font-normal text-grey-accent">
-                {events.length}
-              </span>
-            </h2>
+            <h2 className="text-lg font-medium text-grey-dark">Events</h2>
           </div>
           <div className="overflow-x-auto">
             <Table>
@@ -450,7 +530,9 @@ export default function EndpointDetailsPage() {
                     >
                       <TableCell className="px-6 py-4">
                         <span
-                          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getSeverityColor(event.severity)}`}
+                          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getSeverityColor(
+                            event.severity
+                          )}`}
                         >
                           {event.severity}
                         </span>
@@ -483,7 +565,8 @@ export default function EndpointDetailsPage() {
           {totalPages > 1 && (
             <div className="flex items-center justify-between px-6 py-4 border-t">
               <div className="text-sm text-grey-accent">
-                Page {currentPage} of {totalPages}
+                Page {currentPage} of {totalPages} • Showing{" "}
+                {currentData.length} of {filteredEvents.length} events
               </div>
               <div className="flex items-center gap-2">
                 {getPaginationNumbers().map((pageNum) => (
