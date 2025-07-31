@@ -10,7 +10,7 @@ use crate::{
     utils::{
         self, ChannelDetails, ChannelState, ChannelSummary, CustomInvoice, Feature, Hop,
         InvoiceHtlc, InvoiceStatus, NodeId, NodeInfo, NodePolicy, PaymentDetails, PaymentHtlc,
-        PaymentState, PaymentSummary, Route, ShortChannelID, sats_to_usd::PriceConverter, 
+        PaymentState, PaymentSummary, Route, ShortChannelID, sats_to_usd::PriceConverter,
     },
 };
 
@@ -26,7 +26,7 @@ use hex;
 use lightning::ln::{PaymentHash, features::NodeFeatures};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     convert::TryFrom,
     pin::Pin,
     str::FromStr,
@@ -142,7 +142,7 @@ impl LndNode {
                 alias,
             },
             network,
-            price_converter: PriceConverter::new()
+            price_converter: PriceConverter::new(),
         })
     }
 
@@ -285,7 +285,7 @@ impl ClnNode {
                 alias,
             },
             network,
-            price_converter: PriceConverter::new()
+            price_converter: PriceConverter::new(),
         })
     }
 
@@ -436,20 +436,42 @@ impl LightningClient for LndNode {
 
     async fn list_channels(&self) -> Result<Vec<ChannelSummary>, LightningError> {
         let mut lightning_stub = self.get_lightning_stub().await;
-        let response = lightning_stub
+
+        let list_channels_response = lightning_stub
             .list_channels(ListChannelsRequest::default())
             .await
             .map_err(|err| LightningError::RpcError(err.to_string()))?
             .into_inner();
 
-        Ok(response
+        let graph_response = lightning_stub
+            .describe_graph(ChannelGraphRequest {
+                include_unannounced: false,
+            })
+            .await
+            .map_err(|err| LightningError::RpcError(err.to_string()))?
+            .into_inner();
+
+        let mut last_updates: HashMap<u64, u64> = HashMap::new();
+
+        for edge in graph_response.edges.into_iter() {
+            if edge.last_update > 0 {
+                let last_update_u64 = edge.last_update as u64;
+                let entry = last_updates.entry(edge.channel_id).or_insert(0);
+                *entry = (*entry).max(last_update_u64);
+            }
+        }
+
+        let channels: Vec<ChannelSummary> = list_channels_response
             .channels
             .into_iter()
             .map(|channel| {
-                let channel_state = match channel.active {
-                    true => ChannelState::Active,
-                    false => ChannelState::Disabled,
+                let channel_state = if channel.active {
+                    ChannelState::Active
+                } else {
+                    ChannelState::Disabled
                 };
+
+                let last_update = last_updates.get(&channel.chan_id).copied();
 
                 ChannelSummary {
                     chan_id: ShortChannelID(channel.chan_id),
@@ -459,11 +481,13 @@ impl LightningClient for LndNode {
                     remote_balance: channel.remote_balance.try_into().unwrap_or(0),
                     local_balance: channel.local_balance.try_into().unwrap_or(0),
                     capacity: channel.capacity.try_into().unwrap_or(0),
-                    creation_date: None,
+                    last_update,
                     uptime: Some(channel.uptime as u64),
                 }
             })
-            .collect())
+            .collect();
+
+        Ok(channels)
     }
 
     async fn get_channel_info(
@@ -479,7 +503,9 @@ impl LightningClient for LndNode {
                 ..Default::default()
             })
             .await
-            .map_err(|err| LightningError::ChannelError(format!("LND list_channels error: {}", err)))?;
+            .map_err(|err| {
+                LightningError::ChannelError(format!("LND list_channels error: {}", err))
+            })?;
 
         let channel_opt = response
             .into_inner()
@@ -503,47 +529,52 @@ impl LightningClient for LndNode {
                 {
                     Ok(graph_response) => {
                         let edges = graph_response.into_inner().edges;
-                        if let Some(channel_edge) = edges.into_iter().find(|channel_edge| channel_edge.channel_id == channel_id.0) {
-                            let node1_pubkey =
-                                PublicKey::from_str(&channel_edge.node1_pub).unwrap_or(remote_pubkey);
-                            let node2_pubkey =
-                                PublicKey::from_str(&channel_edge.node2_pub).unwrap_or(self.info.pubkey);
+                        if let Some(channel_edge) = edges
+                            .into_iter()
+                            .find(|channel_edge| channel_edge.channel_id == channel_id.0)
+                        {
+                            let node1_pubkey = PublicKey::from_str(&channel_edge.node1_pub)
+                                .unwrap_or(remote_pubkey);
+                            let node2_pubkey = PublicKey::from_str(&channel_edge.node2_pub)
+                                .unwrap_or(self.info.pubkey);
 
-                            let node1_policy = channel_edge.node1_policy.as_ref().map(|routing_policy| NodePolicy {
-                                pubkey: node1_pubkey,
-                                fee_base_msat: routing_policy.fee_base_msat as u64,
-                                fee_rate_milli_msat: routing_policy.fee_rate_milli_msat as u64,
-                                min_htlc_msat: routing_policy.min_htlc as u64,
-                                max_htlc_msat: if routing_policy.max_htlc_msat > 0 {
-                                    Some(routing_policy.max_htlc_msat as u64)
-                                } else {
-                                    None
-                                },
-                                time_lock_delta: routing_policy.time_lock_delta as u16,
-                                disabled: routing_policy.disabled,
-                                last_update: Some(
-                                    SystemTime::UNIX_EPOCH
-                                        + Duration::from_secs(routing_policy.last_update as u64),
-                                ),
-                            });
+                            let node1_policy =
+                                channel_edge.node1_policy.as_ref().map(|routing_policy| {
+                                    NodePolicy {
+                                        pubkey: node1_pubkey,
+                                        fee_base_msat: routing_policy.fee_base_msat as u64,
+                                        fee_rate_milli_msat: routing_policy.fee_rate_milli_msat
+                                            as u64,
+                                        min_htlc_msat: routing_policy.min_htlc as u64,
+                                        max_htlc_msat: if routing_policy.max_htlc_msat > 0 {
+                                            Some(routing_policy.max_htlc_msat as u64)
+                                        } else {
+                                            None
+                                        },
+                                        time_lock_delta: routing_policy.time_lock_delta as u16,
+                                        disabled: routing_policy.disabled,
+                                        last_update: Some(routing_policy.last_update as u64),
+                                    }
+                                });
 
-                            let node2_policy = channel_edge.node2_policy.as_ref().map(|routing_policy| NodePolicy {
-                                pubkey: node2_pubkey,
-                                fee_base_msat: routing_policy.fee_base_msat as u64,
-                                fee_rate_milli_msat: routing_policy.fee_rate_milli_msat as u64,
-                                min_htlc_msat: routing_policy.min_htlc as u64,
-                                max_htlc_msat: if routing_policy.max_htlc_msat > 0 {
-                                    Some(routing_policy.max_htlc_msat as u64)
-                                } else {
-                                    None
-                                },
-                                time_lock_delta: routing_policy.time_lock_delta as u16,
-                                disabled: routing_policy.disabled,
-                                last_update: Some(
-                                    SystemTime::UNIX_EPOCH
-                                        + Duration::from_secs(routing_policy.last_update as u64),
-                                ),
-                            });
+                            let node2_policy =
+                                channel_edge.node2_policy.as_ref().map(|routing_policy| {
+                                    NodePolicy {
+                                        pubkey: node2_pubkey,
+                                        fee_base_msat: routing_policy.fee_base_msat as u64,
+                                        fee_rate_milli_msat: routing_policy.fee_rate_milli_msat
+                                            as u64,
+                                        min_htlc_msat: routing_policy.min_htlc as u64,
+                                        max_htlc_msat: if routing_policy.max_htlc_msat > 0 {
+                                            Some(routing_policy.max_htlc_msat as u64)
+                                        } else {
+                                            None
+                                        },
+                                        time_lock_delta: routing_policy.time_lock_delta as u16,
+                                        disabled: routing_policy.disabled,
+                                        last_update: Some(routing_policy.last_update as u64),
+                                    }
+                                });
 
                             (node1_policy, node2_policy)
                         } else {
@@ -558,18 +589,20 @@ impl LightningClient for LndNode {
                     local_balance_sat: channel.local_balance.try_into().unwrap_or(0),
                     remote_balance_sat: channel.remote_balance.try_into().unwrap_or(0),
                     capacity_sat: channel.capacity.try_into().unwrap_or(0),
-                    active: channel.active,
+                    active: Some(channel.active),
                     private: channel.private,
                     remote_pubkey,
                     commit_fee_sat: Some(channel.commit_fee as u64),
                     local_chan_reserve_sat: Some(
-                        channel.local_constraints
+                        channel
+                            .local_constraints
                             .as_ref()
                             .map(|local_constraints| local_constraints.chan_reserve_sat)
                             .unwrap_or(0),
                     ),
                     remote_chan_reserve_sat: Some(
-                        channel.remote_constraints
+                        channel
+                            .remote_constraints
                             .as_ref()
                             .map(|remote_constraints| remote_constraints.chan_reserve_sat)
                             .unwrap_or(0),
@@ -578,7 +611,6 @@ impl LightningClient for LndNode {
                     total_satoshis_sent: Some(channel.total_satoshis_sent as u64),
                     total_satoshis_received: Some(channel.total_satoshis_received as u64),
                     channel_age_blocks: channel.lifetime.try_into().ok(),
-                    last_update: None,
                     opening_cost_sat: None,
                     initiator: Some(channel.initiator),
                     txid: Some(channel_point.txid),
@@ -679,7 +711,10 @@ impl LightningClient for LndNode {
                         resolve_time: Some(
                             UNIX_EPOCH + Duration::from_nanos(htlc.resolve_time_ns as u64),
                         ),
-                        failure_reason: htlc.failure.as_ref().map(|failure| format!("{:?}", failure.code())),
+                        failure_reason: htlc
+                            .failure
+                            .as_ref()
+                            .map(|failure| format!("{:?}", failure.code())),
                         failure_code: htlc.failure.as_ref().map(|failure| failure.code() as u16),
                     }
                 })
@@ -746,11 +781,11 @@ impl LightningClient for LndNode {
                     amount_sat,
                     amount_usd,
                     routing_fee: payment.fee_sat.try_into().ok(),
-                    creation_time: payment
-                        .creation_time_ns
-                        .try_into()
-                        .ok()
-                        .map(|timestamp_nanos: u64| SystemTime::UNIX_EPOCH + Duration::from_nanos(timestamp_nanos)),
+                    creation_time: payment.creation_time_ns.try_into().ok().map(
+                        |timestamp_nanos: u64| {
+                            SystemTime::UNIX_EPOCH + Duration::from_nanos(timestamp_nanos)
+                        },
+                    ),
                     invoice: Some(payment.payment_request),
                     payment_hash: payment.payment_hash,
                     completed_at: payment.htlcs.last().map(|htlc| {
@@ -954,13 +989,13 @@ impl LightningClient for LndNode {
                     invoice
                         .features
                         .into_iter()
-                        .map(|(feature_bit, feature_entry )| {
+                        .map(|(feature_bit, feature_entry)| {
                             (
                                 feature_bit,
                                 Feature {
-                                    name: Some(feature_entry .name),
-                                    is_known: Some(feature_entry .is_known),
-                                    is_required: Some(feature_entry .is_required),
+                                    name: Some(feature_entry.name),
+                                    is_known: Some(feature_entry.is_known),
+                                    is_required: Some(feature_entry.is_required),
                                 },
                             )
                         })
@@ -983,7 +1018,8 @@ impl LightningClient for LndNode {
                     state,
                     is_keysend: Some(invoice.is_keysend),
                     is_amp: Some(invoice.is_amp),
-                    payment_addr: Some(hex::encode(invoice.payment_addr)).filter(|addr_hex| !addr_hex.is_empty()),
+                    payment_addr: Some(hex::encode(invoice.payment_addr))
+                        .filter(|addr_hex| !addr_hex.is_empty()),
                     htlcs,
                     features,
                 }
@@ -1033,7 +1069,8 @@ impl LightningClient for LndNode {
             state,
             is_keysend: Some(response.is_keysend),
             is_amp: Some(response.is_amp),
-            payment_addr: Some(hex::encode(response.payment_addr)).filter(|addr_hex| !addr_hex.is_empty()),
+            payment_addr: Some(hex::encode(response.payment_addr))
+                .filter(|addr_hex| !addr_hex.is_empty()),
             htlcs: None,
             features: None,
         })
@@ -1087,59 +1124,97 @@ impl LightningClient for ClnNode {
 
     async fn list_channels(&self) -> Result<Vec<ChannelSummary>, LightningError> {
         let mut client = self.get_client_stub().await;
-        let response = client
+
+        // Get basic channel data
+        let peer_channels_response = client
             .list_peer_channels(ListpeerchannelsRequest { id: None })
             .await
             .map_err(|err| LightningError::RpcError(err.to_string()))?
             .into_inner();
 
-        let _now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
+        // Get routing info
+        let routing_channels_response = client
+            .list_channels(ListchannelsRequest::default())
+            .await
+            .map_err(|err| LightningError::RpcError(format!("Failed to list channels: {}", err)))?
+            .into_inner();
 
-        let summaries = response
+        let mut channel_routing_info = HashMap::new();
+        for routing_channel in routing_channels_response.channels {
+            channel_routing_info
+                .entry(routing_channel.short_channel_id)
+                .and_modify(|info: &mut (u64, bool)| {
+                    info.0 = info.0.max(routing_channel.last_update as u64);
+                    info.1 |= routing_channel.public;
+                })
+                .or_insert((routing_channel.last_update as u64, routing_channel.public));
+        }
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let channel_summaries = peer_channels_response
             .channels
             .into_iter()
-            .filter_map(|channel| {
-                let chan_id = channel.short_channel_id.as_ref()?.parse().ok()?; // u64
+            .filter_map(|peer_channel| {
+                let short_channel_id_str = peer_channel.short_channel_id.as_ref()?;
+                let channel_id = short_channel_id_str.parse().ok()?;
 
-                let capacity: u64 = channel.total_msat.as_ref().map(|amt| amt.msat).unwrap_or(0) / 1000;
+                let capacity_satoshis: u64 = peer_channel
+                    .total_msat
+                    .as_ref()
+                    .map(|amt| amt.msat)
+                    .unwrap_or(0)
+                    / 1000;
+                let local_balance_satoshis: u64 = peer_channel
+                    .to_us_msat
+                    .as_ref()
+                    .map(|amt| amt.msat)
+                    .unwrap_or(0)
+                    / 1000;
+                let remote_balance_satoshis =
+                    capacity_satoshis.saturating_sub(local_balance_satoshis);
 
-                let local_balance: u64 =
-                    channel.to_us_msat.as_ref().map(|amt| amt.msat).unwrap_or(0) / 1000;
-
-                let remote_balance = capacity.saturating_sub(local_balance);
-
-                let channel_state = match channel.state {
-                    0 => ChannelState::Opening,  // OPENINGD
-                    1 => ChannelState::Opening,  // CHANNELD_AWAITING_LOCKIN
-                    2 => ChannelState::Active,   // CHANNELD_NORMAL
-                    3 => ChannelState::Closing,  // CHANNELD_SHUTTING_DOWN
-                    4 => ChannelState::Closing,  // CLOSINGD_SIGEXCHANGE
-                    5 => ChannelState::Closing,  // CLOSINGD_COMPLETE
-                    8 => ChannelState::Closed,   // ONCHAIN
-                    9 => ChannelState::Opening,  // DUALOPEND_OPEN_INIT
-                    10 => ChannelState::Opening, // DUALOPEND_AWAITING_LOCKIN
-                    _ => ChannelState::Disabled, // default/fallback
+                let channel_state = match peer_channel.state {
+                    0 | 1 | 9 | 10 => ChannelState::Opening,
+                    2 => ChannelState::Active,
+                    3 | 4 | 5 => ChannelState::Closing,
+                    8 => ChannelState::Closed,
+                    _ => ChannelState::Disabled,
                 };
-                let alias = channel.alias.as_ref().and_then(|channel_alias| channel_alias.remote.clone());
+
+                let alias = peer_channel.alias.as_ref().and_then(|a| a.remote.clone());
+
+                // Get routing info if available
+                let (last_update_timestamp, is_public) = channel_routing_info
+                    .get(short_channel_id_str)
+                    .copied()
+                    .unwrap_or((0, false));
+
+                // For private channels with no routing update, use current time as fallback
+                let last_update_timestamp = if !is_public && last_update_timestamp == 0 {
+                    now
+                } else {
+                    last_update_timestamp
+                };
 
                 Some(ChannelSummary {
-                    chan_id,
+                    chan_id: channel_id,
                     alias,
                     channel_state,
-                    private: false,
-                    remote_balance,
-                    local_balance,
-                    capacity,
-                    creation_date: None,
+                    private: !is_public,
+                    remote_balance: remote_balance_satoshis,
+                    local_balance: local_balance_satoshis,
+                    capacity: capacity_satoshis,
+                    last_update: Some(last_update_timestamp),
                     uptime: None,
                 })
             })
             .collect();
 
-        Ok(summaries)
+        Ok(channel_summaries)
     }
 
     async fn get_channel_info(
@@ -1147,93 +1222,217 @@ impl LightningClient for ClnNode {
         channel_id: &ShortChannelID,
     ) -> Result<ChannelDetails, LightningError> {
         let mut client = self.get_client_stub().await;
+        let channel = client
+            .list_peer_channels(ListpeerchannelsRequest { id: None })
+            .await
+            .map_err(|err| {
+                LightningError::RpcError(format!("Failed to list peer channels: {}", err))
+            })?
+            .into_inner()
+            .channels
+            .into_iter()
+            .find(|channel| channel.short_channel_id.as_deref() == Some(&channel_id.0.to_string()))
+            .ok_or_else(|| {
+                LightningError::ChannelError(format!("Channel {} not found", channel_id))
+            })?;
 
-        // First get the channel information
-        let channels_response = client
+        // Get additional info from list_channels
+        let list_channels_response = client
             .list_channels(ListchannelsRequest {
                 short_channel_id: Some(channel_id.0.to_string()),
                 ..Default::default()
             })
             .await
-            .map_err(|err| LightningError::ChannelError(format!("CLN list_channels error: {}", err)))?
+            .map_err(|err| LightningError::RpcError(format!("Failed to list channels: {}", err)))?
             .into_inner();
 
-        let chan_opt = channels_response
-            .channels
-            .into_iter()
-            .find(|channel| channel.short_channel_id == channel_id.0.to_string());
-
-        if let Some(channel) = chan_opt {
-            let remote_pubkey = PublicKey::from_slice(&channel.destination).map_err(|err| {
-                LightningError::ChannelError(format!("Invalid remote pubkey bytes: {}", err))
-            })?;
-
-            let amount_msat = channel.amount_msat.as_ref();
-            let capacity_sat = amount_msat.map(|amt| amt.msat / 1000).unwrap_or(0);
-            let local_balance_sat = amount_msat.map(|amt| amt.msat / 2000).unwrap_or(0);
-            let remote_balance_sat = capacity_sat.saturating_sub(local_balance_sat);
-
-            // Get node policies
-            let node1_policy = if channel.source == self.info.pubkey.serialize().to_vec() {
-                Some(NodePolicy {
-                    pubkey: self.info.pubkey,
-                    fee_base_msat: channel.base_fee_millisatoshi as u64,
-                    fee_rate_milli_msat: channel.fee_per_millionth as u64,
-                    min_htlc_msat: channel.htlc_minimum_msat.as_ref().map_or(0, |amt| amt.msat),
-                    max_htlc_msat: channel.htlc_maximum_msat.as_ref().map(|amt| amt.msat),
-                    time_lock_delta: channel.delay as u16,
-                    disabled: !channel.active,
-                    last_update: None,
-                })
-            } else {
-                None
-            };
-
-            let node2_policy = if channel.destination == self.info.pubkey.serialize().to_vec() {
-                Some(NodePolicy {
-                    pubkey: remote_pubkey,
-                    fee_base_msat: channel.base_fee_millisatoshi as u64,
-                    fee_rate_milli_msat: channel.fee_per_millionth as u64,
-                    min_htlc_msat: channel.htlc_minimum_msat.as_ref().map_or(0, |amt| amt.msat),
-                    max_htlc_msat: channel.htlc_maximum_msat.as_ref().map(|amt| amt.msat),
-                    time_lock_delta: channel.delay as u16,
-                    disabled: !channel.active,
-                    last_update: None,
-                })
-            } else {
-                None
-            };
-
-            Ok(ChannelDetails {
-                channel_id: *channel_id,
-                local_balance_sat,
-                remote_balance_sat,
-                capacity_sat,
-                active: channel.active,
-                private: !channel.public,
-                remote_pubkey,
-                commit_fee_sat: None,
-                local_chan_reserve_sat: None,
-                remote_chan_reserve_sat: None,
-                num_updates: None,
-                total_satoshis_sent: None,
-                total_satoshis_received: None,
-                channel_age_blocks: None,
-                last_update: None,
-                opening_cost_sat: None,
-                initiator: None,
-                txid: None,
-                vout: None,
-                node1_policy,
-                node2_policy,
-            })
-        } else {
-            Err(LightningError::ChannelError(
-                "Channel not found in CLN".to_string(),
+        let remote_pubkey = PublicKey::from_slice(&channel.peer_id).map_err(|err| {
+            LightningError::ChannelError(format!(
+                "Invalid peer pubkey for channel {}: {}",
+                channel_id, err
             ))
-        }
-    }
+        })?;
 
+        // Extract last_update for both directions
+        let mut local_last_update = None;
+        let mut remote_last_update = None;
+        let mut is_active_option = None;
+
+        for channel in &list_channels_response.channels {
+            // Convert Vec<u8> to String before parsing as pubkey
+            if let Ok(source_str) = String::from_utf8(channel.source.clone()) {
+                if let Ok(pubkey) = PublicKey::from_str(&source_str) {
+                    let update_time = Some(channel.last_update as u64);
+                    if pubkey == self.info.pubkey {
+                        local_last_update = update_time;
+                        is_active_option = Some(channel.active);
+                    } else if pubkey == remote_pubkey {
+                        remote_last_update = update_time;
+                    }
+                }
+            }
+        }
+
+        let is_active = is_active_option.unwrap_or(false);
+
+        let capacity_sat = channel
+            .total_msat
+            .as_ref()
+            .ok_or(LightningError::ChannelError(format!(
+                "Missing total_msat for channel {}",
+                channel_id
+            )))?
+            .msat
+            / 1000;
+
+        let local_balance_sat = channel
+            .to_us_msat
+            .as_ref()
+            .ok_or(LightningError::ChannelError(format!(
+                "Missing to_us_msat for channel {}",
+                channel_id
+            )))?
+            .msat
+            / 1000;
+
+        let remote_balance_sat =
+            capacity_sat
+                .checked_sub(local_balance_sat)
+                .ok_or(LightningError::ChannelError(format!(
+                    "Invalid balance calculation for channel {}",
+                    channel_id
+                )))?;
+
+        let initiator = match channel.opener().as_str_name() {
+            "LOCAL" => Some(true),
+            "REMOTE" => Some(false),
+            _ => None,
+        };
+
+        let updates = channel
+            .updates
+            .as_ref()
+            .ok_or(LightningError::ChannelError(format!(
+                "Missing channel updates for channel {}",
+                channel_id
+            )))?;
+
+        let local_policy = updates
+            .local
+            .as_ref()
+            .ok_or(LightningError::ChannelError(format!(
+                "Missing local policy for channel {}",
+                channel_id
+            )))?;
+
+        let remote_policy =
+            updates
+                .remote
+                .as_ref()
+                .ok_or(LightningError::ChannelError(format!(
+                    "Missing remote policy for channel {}",
+                    channel_id
+                )))?;
+
+        // Build policy structs
+        let local_policy_struct = NodePolicy {
+            pubkey: self.info.pubkey,
+            fee_base_msat: local_policy
+                .fee_base_msat
+                .as_ref()
+                .ok_or(LightningError::ChannelError(format!(
+                    "Missing fee_base_msat in local policy for channel {}",
+                    channel_id
+                )))?
+                .msat,
+            fee_rate_milli_msat: local_policy.fee_proportional_millionths as u64,
+            min_htlc_msat: local_policy
+                .htlc_minimum_msat
+                .as_ref()
+                .ok_or(LightningError::ChannelError(format!(
+                    "Missing htlc_minimum_msat in local policy for channel {}",
+                    channel_id
+                )))?
+                .msat,
+            max_htlc_msat: local_policy.htlc_maximum_msat.as_ref().map(|amt| amt.msat),
+            time_lock_delta: local_policy.cltv_expiry_delta as u16,
+            disabled: !is_active,
+            last_update: local_last_update,
+        };
+
+        let remote_policy_struct = NodePolicy {
+            pubkey: remote_pubkey,
+            fee_base_msat: remote_policy
+                .fee_base_msat
+                .as_ref()
+                .ok_or(LightningError::ChannelError(format!(
+                    "Missing fee_base_msat in remote policy for channel {}",
+                    channel_id
+                )))?
+                .msat,
+            fee_rate_milli_msat: remote_policy.fee_proportional_millionths as u64,
+            min_htlc_msat: remote_policy
+                .htlc_minimum_msat
+                .as_ref()
+                .ok_or(LightningError::ChannelError(format!(
+                    "Missing htlc_minimum_msat in remote policy for channel {}",
+                    channel_id
+                )))?
+                .msat,
+            max_htlc_msat: remote_policy.htlc_maximum_msat.as_ref().map(|amt| amt.msat),
+            time_lock_delta: remote_policy.cltv_expiry_delta as u16,
+            disabled: !is_active,
+            last_update: remote_last_update,
+        };
+
+        // Determine policy ordering
+        let (node1_policy, node2_policy) = if self.info.pubkey < remote_pubkey {
+            (local_policy_struct, remote_policy_struct)
+        } else {
+            (remote_policy_struct, local_policy_struct)
+        };
+
+        // Handle txid conversion
+        let txid = if let Some(txid_bytes) = channel.funding_txid.as_ref() {
+            std::str::from_utf8(txid_bytes)
+                .ok()
+                .and_then(|txid_str| Txid::from_str(txid_str).ok())
+        } else {
+            None
+        };
+
+        Ok(ChannelDetails {
+            channel_id: *channel_id,
+            local_balance_sat,
+            remote_balance_sat,
+            capacity_sat,
+            active: Some(is_active),
+            private: channel.private.unwrap_or(false),
+            remote_pubkey,
+            commit_fee_sat: channel.last_tx_fee_msat.as_ref().map(|amt| amt.msat / 1000),
+            local_chan_reserve_sat: channel.our_reserve_msat.as_ref().map(|amt| amt.msat / 1000),
+            remote_chan_reserve_sat: channel
+                .their_reserve_msat
+                .as_ref()
+                .map(|amt| amt.msat / 1000),
+            num_updates: None,
+            total_satoshis_sent: channel
+                .out_fulfilled_msat
+                .as_ref()
+                .map(|amt| amt.msat / 1000),
+            total_satoshis_received: channel
+                .in_fulfilled_msat
+                .as_ref()
+                .map(|amt| amt.msat / 1000),
+            channel_age_blocks: None,
+            opening_cost_sat: None,
+            initiator,
+            txid,
+            vout: channel.funding_outnum,
+            node1_policy: Some(node1_policy),
+            node2_policy: Some(node2_policy),
+        })
+    }
     async fn get_payment_details(
         &self,
         payment_hash: &PaymentHash,
@@ -1261,7 +1460,11 @@ impl LightningClient for ClnNode {
         };
 
         // Calculate amounts
-        let amount = payment.amount_msat.as_ref().map(|amt| amt.msat / 1000).unwrap_or(0);
+        let amount = payment
+            .amount_msat
+            .as_ref()
+            .map(|amt| amt.msat / 1000)
+            .unwrap_or(0);
         let sent_amount = payment
             .amount_sent_msat
             .map(|amt| amt.msat / 1000)
@@ -1295,7 +1498,11 @@ impl LightningClient for ClnNode {
             .map(|network| Some(network.to_string()))
             .unwrap_or(None);
 
-        let amount_sat: u64 = payment.amount_msat.as_ref().map(|amt| amt.msat / 1000).unwrap_or(0);
+        let amount_sat: u64 = payment
+            .amount_msat
+            .as_ref()
+            .map(|amt| amt.msat / 1000)
+            .unwrap_or(0);
 
         let amount_usd = self.price_converter.sats_to_usd(amount_sat).await?;
 
@@ -1345,7 +1552,6 @@ impl LightningClient for ClnNode {
                 // Convert sats → USD using pre-fetched price
                 let amount_usd = PriceConverter::sats_to_usd_with_price(amount_sat, btc_price);
 
-
                 let routing_fee = match (
                     payment.amount_sent_msat.as_ref(),
                     payment.amount_msat.as_ref(),
@@ -1370,7 +1576,10 @@ impl LightningClient for ClnNode {
                     creation_time,
                     invoice: payment.bolt11,
                     payment_hash: hex::encode(&payment.payment_hash),
-                    completed_at: payment.completed_at.map(|timestamp| timestamp.try_into().ok()).flatten(),
+                    completed_at: payment
+                        .completed_at
+                        .map(|timestamp| timestamp.try_into().ok())
+                        .flatten(),
                 })
             })
             .collect();
@@ -1407,7 +1616,11 @@ impl LightningClient for ClnNode {
             .invoices
             .into_iter()
             .map(|invoice| {
-                let amount_msat = invoice.amount_msat.as_ref().map(|amt_msat| amt_msat.msat).unwrap_or(0);
+                let amount_msat = invoice
+                    .amount_msat
+                    .as_ref()
+                    .map(|amt_msat| amt_msat.msat)
+                    .unwrap_or(0);
                 let amount_sats = amount_msat / 1000;
 
                 let expires_at = invoice.expires_at;
@@ -1490,7 +1703,11 @@ impl LightningClient for ClnNode {
             }
         };
 
-        let amount_msat = invoice.amount_msat.as_ref().map(|amt_msat| amt_msat.msat).unwrap_or(0);
+        let amount_msat = invoice
+            .amount_msat
+            .as_ref()
+            .map(|amt_msat| amt_msat.msat)
+            .unwrap_or(0);
         let amount_sats = amount_msat / 1000;
 
         Ok(CustomInvoice {

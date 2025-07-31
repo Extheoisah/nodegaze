@@ -106,7 +106,7 @@ pub struct ChannelDetails {
     pub local_balance_sat: u64,
     pub remote_balance_sat: u64,
     pub capacity_sat: u64,
-    pub active: bool,
+    pub active: Option<bool>,
     pub private: bool,
     pub remote_pubkey: PublicKey,
     pub commit_fee_sat: Option<u64>,
@@ -116,7 +116,6 @@ pub struct ChannelDetails {
     pub total_satoshis_sent: Option<u64>,
     pub total_satoshis_received: Option<u64>,
     pub channel_age_blocks: Option<u32>,
-    pub last_update: Option<SystemTime>,
     pub opening_cost_sat: Option<u64>,
     pub initiator: Option<bool>,
     pub txid: Option<Txid>,
@@ -134,7 +133,7 @@ pub struct ChannelSummary {
     pub remote_balance: u64,
     pub local_balance: u64,
     pub capacity: u64,
-    pub creation_date: Option<i64>,
+    pub last_update: Option<u64>,
     pub uptime: Option<u64>,
 }
 
@@ -168,7 +167,7 @@ pub struct NodePolicy {
     pub max_htlc_msat: Option<u64>,
     pub time_lock_delta: u16,
     pub disabled: bool,
-    pub last_update: Option<SystemTime>,
+    pub last_update: Option<u64>,
 }
 
 impl Display for NodePolicy {
