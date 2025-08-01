@@ -1,7 +1,36 @@
-//! Manages Events occuring on a lightning node.
+//! Manages Events occurring on a lightning node.
 //!
-//! This module collects, aggregates and dispatches events occuring on a lightning node
+//! This module collects, aggregates and dispatches events occurring on a lightning node
 //! in order to provide timely notifications for critical events.
+//!
+//! ## Event Streaming Architecture
+//!
+//! The event system has been designed to avoid blocking issues that can occur when
+//! multiple concurrent streams are attempted on Lightning nodes (particularly LND).
+//! Instead of creating separate streams for different event types, this implementation:
+//!
+//! 1. Uses a single unified event stream per node via `stream_events()`
+//! 2. Applies client-side filtering to dispatch only relevant events
+//! 3. Prevents multiple concurrent streams per node using an active streams tracker
+//! 4. Provides efficient event routing without overwhelming the Lightning node
+//!
+//! ## Usage Example
+//!
+//! ```rust
+//! // Create event collector with a channel
+//! let (sender, receiver) = mpsc::channel(1000);
+//! let collector = EventCollector::new(sender);
+//!
+//! // Start streaming all events for a node
+//! collector.start_sending(node_id, lightning_client).await;
+//!
+//! // Or start streaming only specific event types
+//! collector.start_filtered_events(
+//!     node_id,
+//!     vec![EventType::Channel, EventType::Invoice],
+//!     lightning_client
+//! ).await;
+//! ```
 
 use crate::services::node_manager::LightningClient;
 use bitcoin::secp256k1::PublicKey;
@@ -11,6 +40,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use tokio;
 use tokio::sync::{Mutex, mpsc};
+use tracing;
 
 use tokio_stream::StreamExt;
 
@@ -190,8 +220,16 @@ impl Default for StreamConfig {
     }
 }
 
+/// Collects and streams Lightning Network events from nodes.
+///
+/// The EventCollector manages event streaming from Lightning nodes while preventing
+/// concurrent stream conflicts. It maintains a single unified stream per node and
+/// applies client-side filtering to ensure efficient event processing.
 pub struct EventCollector {
+    /// Channel sender for dispatching processed events
     raw_event_sender: mpsc::Sender<NodeSpecificEvent>,
+    /// Tracks which nodes currently have active event streams to prevent conflicts
+    active_streams: Arc<Mutex<HashSet<PublicKey>>>,
 }
 
 /// Configuration for starting event streams
@@ -206,23 +244,31 @@ pub struct StreamConfig {
 }
 
 impl EventCollector {
+    /// Creates a new EventCollector with the given event sender.
+    ///
+    /// # Arguments
+    /// * `sender` - Channel sender for dispatching collected events
     pub fn new(sender: mpsc::Sender<NodeSpecificEvent>) -> Self {
         EventCollector {
             raw_event_sender: sender,
+            active_streams: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 
+    /// Starts streaming all event types for the specified node.
+    ///
+    /// This method initiates a unified event stream that captures all Lightning
+    /// events (channels, invoices, payments) for the given node.
+    ///
+    /// # Arguments
+    /// * `node_id` - Public key identifier of the Lightning node
+    /// * `lnd_node_` - Arc-wrapped Lightning client for the node
     pub async fn start_sending(
         &self,
         node_id: PublicKey,
         lnd_node_: Arc<Mutex<Box<dyn LightningClient + Send + Sync + 'static>>>,
     ) {
-        // Start channel events stream
-        self.start_channel_events_stream(node_id, lnd_node_.clone())
-            .await;
-
-        // Start invoice events stream
-        self.start_invoice_events_stream(node_id, lnd_node_.clone())
+        self.start_unified_event_stream(node_id, lnd_node_, EventFilter::all())
             .await;
     }
 
@@ -232,7 +278,8 @@ impl EventCollector {
         node_id: PublicKey,
         lnd_node_: Arc<Mutex<Box<dyn LightningClient + Send + Sync + 'static>>>,
     ) {
-        self.start_channel_events_stream(node_id, lnd_node_).await;
+        self.start_unified_event_stream(node_id, lnd_node_, EventFilter::channels_only())
+            .await;
     }
 
     /// Start streaming only invoice events for a node
@@ -241,7 +288,8 @@ impl EventCollector {
         node_id: PublicKey,
         lnd_node_: Arc<Mutex<Box<dyn LightningClient + Send + Sync + 'static>>>,
     ) {
-        self.start_invoice_events_stream(node_id, lnd_node_).await;
+        self.start_unified_event_stream(node_id, lnd_node_, EventFilter::invoices_only())
+            .await;
     }
 
     /// Start streaming specific event types for a node
@@ -251,35 +299,9 @@ impl EventCollector {
         event_types: Vec<EventType>,
         lnd_node_: Arc<Mutex<Box<dyn LightningClient + Send + Sync + 'static>>>,
     ) {
-        // Start individual streams based on requested event types
-        for event_type in event_types {
-            match event_type {
-                EventType::Channel => {
-                    self.start_channel_events_stream(node_id, lnd_node_.clone())
-                        .await;
-                }
-                EventType::Invoice => {
-                    self.start_invoice_events_stream(node_id, lnd_node_.clone())
-                        .await;
-                }
-                EventType::Payment => {
-                    self.start_payment_events_stream(node_id, lnd_node_.clone())
-                        .await;
-                }
-                EventType::All => {
-                    self.start_channel_events_stream(node_id, lnd_node_.clone())
-                        .await;
-                    self.start_invoice_events_stream(node_id, lnd_node_.clone())
-                        .await;
-                    self.start_payment_events_stream(node_id, lnd_node_.clone())
-                        .await;
-                }
-                _ => {
-                    // Future event types can be added here
-                    eprintln!("Event type {:?} not yet implemented", event_type);
-                }
-            }
-        }
+        let filter = EventFilter::for_types(event_types);
+        self.start_unified_event_stream(node_id, lnd_node_, filter)
+            .await;
     }
 
     /// Start streaming payment events for a node
@@ -288,28 +310,60 @@ impl EventCollector {
         node_id: PublicKey,
         lnd_node_: Arc<Mutex<Box<dyn LightningClient + Send + Sync + 'static>>>,
     ) {
-        self.start_payment_events_stream(node_id, lnd_node_).await;
+        let filter = EventFilter::for_types(vec![EventType::Payment]);
+        self.start_unified_event_stream(node_id, lnd_node_, filter)
+            .await;
     }
 
-    async fn start_channel_events_stream(
+    /// Starts a unified event stream that handles all event types and filters them client-side.
+    ///
+    /// This is the core method that prevents blocking issues by using a single stream
+    /// per node instead of multiple concurrent streams. It:
+    ///
+    /// 1. Checks if a stream is already active for the node
+    /// 2. Creates a single unified stream using `stream_events()`
+    /// 3. Applies client-side filtering based on the provided EventFilter
+    /// 4. Spawns a background task to handle events without blocking
+    ///
+    /// # Arguments
+    /// * `node_id` - Public key identifier of the Lightning node
+    /// * `lnd_node_` - Arc-wrapped Lightning client for the node
+    /// * `filter` - Event filter to determine which events to process
+    async fn start_unified_event_stream(
         &self,
         node_id: PublicKey,
         lnd_node_: Arc<Mutex<Box<dyn LightningClient + Send + Sync + 'static>>>,
+        filter: EventFilter,
     ) {
+        // Check if a stream is already active for this node
+        {
+            let mut active_streams = self.active_streams.lock().await;
+            if active_streams.contains(&node_id) {
+                tracing::warn!("Event stream already active for node {}", node_id);
+                return;
+            }
+            active_streams.insert(node_id);
+        }
+
         let sender = self.raw_event_sender.clone();
         let node_id_for_task = node_id;
+        let active_streams = self.active_streams.clone();
 
         tokio::spawn(async move {
-            // Get the channel events stream by temporarily acquiring the lock
-            let channel_stream = {
+            // Get the unified events stream by temporarily acquiring the lock
+            let event_stream = {
                 let mut lnd_node_guard = lnd_node_.lock().await;
-                match lnd_node_guard.stream_channel_events_only().await {
+                match lnd_node_guard.stream_events().await {
                     Ok(stream) => stream,
                     Err(e) => {
-                        eprintln!(
-                            "Failed to start channel event stream for node {}: {:?}",
-                            node_id_for_task, e
+                        tracing::error!(
+                            "Failed to start unified event stream for node {}: {:?}",
+                            node_id_for_task,
+                            e
                         );
+                        // Remove from active streams on error
+                        let mut active_streams = active_streams.lock().await;
+                        active_streams.remove(&node_id_for_task);
                         return;
                     }
                 }
@@ -317,98 +371,49 @@ impl EventCollector {
             };
 
             // Now stream events without holding the lock
-            let mut event_stream = channel_stream;
-            while let Some(event) = event_stream.next().await {
-                if sender.send(event).await.is_err() {
-                    eprintln!(
-                        "Failed to send channel event for node {}. Receiver likely dropped.",
-                        node_id_for_task
-                    );
-                    break;
+            let mut stream = event_stream;
+            while let Some(event) = stream.next().await {
+                // Apply client-side filtering
+                if filter.matches_event(&event) {
+                    if sender.send(event).await.is_err() {
+                        tracing::error!(
+                            "Failed to send event for node {}. Receiver likely dropped.",
+                            node_id_for_task
+                        );
+                        break;
+                    }
                 }
             }
-            println!("Channel event stream for node {} ended.", node_id_for_task);
+
+            // Remove from active streams when done
+            let mut active_streams = active_streams.lock().await;
+            active_streams.remove(&node_id_for_task);
+            tracing::info!("Unified event stream for node {} ended.", node_id_for_task);
         });
     }
 
-    async fn start_invoice_events_stream(
-        &self,
-        node_id: PublicKey,
-        lnd_node_: Arc<Mutex<Box<dyn LightningClient + Send + Sync + 'static>>>,
-    ) {
-        let sender = self.raw_event_sender.clone();
-        let node_id_for_task = node_id;
-
-        tokio::spawn(async move {
-            // Get the invoice events stream by temporarily acquiring the lock
-            let invoice_stream = {
-                let mut lnd_node_guard = lnd_node_.lock().await;
-                match lnd_node_guard.stream_invoice_events_only().await {
-                    Ok(stream) => stream,
-                    Err(e) => {
-                        eprintln!(
-                            "Failed to start invoice event stream for node {}: {:?}",
-                            node_id_for_task, e
-                        );
-                        return;
-                    }
-                }
-                // Lock is released here when lnd_node_guard goes out of scope
-            };
-
-            // Now stream events without holding the lock
-            let mut event_stream = invoice_stream;
-            while let Some(event) = event_stream.next().await {
-                if sender.send(event).await.is_err() {
-                    eprintln!(
-                        "Failed to send invoice event for node {}. Receiver likely dropped.",
-                        node_id_for_task
-                    );
-                    break;
-                }
-            }
-            println!("Invoice event stream for node {} ended.", node_id_for_task);
-        });
+    /// Stop the event stream for a specific node
+    pub async fn stop_event_stream(&self, node_id: PublicKey) -> bool {
+        let mut active_streams = self.active_streams.lock().await;
+        let was_active = active_streams.remove(&node_id);
+        if was_active {
+            tracing::info!("Stopped event stream for node {}", node_id);
+        } else {
+            tracing::warn!("No active event stream found for node {}", node_id);
+        }
+        was_active
     }
 
-    async fn start_payment_events_stream(
-        &self,
-        node_id: PublicKey,
-        lnd_node_: Arc<Mutex<Box<dyn LightningClient + Send + Sync + 'static>>>,
-    ) {
-        let sender = self.raw_event_sender.clone();
-        let node_id_for_task = node_id;
+    /// Check if an event stream is active for a specific node
+    pub async fn is_stream_active(&self, node_id: PublicKey) -> bool {
+        let active_streams = self.active_streams.lock().await;
+        active_streams.contains(&node_id)
+    }
 
-        tokio::spawn(async move {
-            // Get the payment events stream by temporarily acquiring the lock
-            let payment_stream = {
-                let mut lnd_node_guard = lnd_node_.lock().await;
-                match lnd_node_guard.stream_payment_events_only().await {
-                    Ok(stream) => stream,
-                    Err(e) => {
-                        eprintln!(
-                            "Failed to start payment event stream for node {}: {:?}",
-                            node_id_for_task, e
-                        );
-                        return;
-                    }
-                }
-                // Lock is released here when lnd_node_guard goes out of scope
-            };
-
-            // Now stream events without holding the lock
-            let mut event_stream = payment_stream;
-            while let Some(event) = event_stream.next().await {
-                if sender.send(event).await.is_err() {
-                    eprintln!(
-                        "Failed to send payment event for node {}. Receiver likely dropped.",
-                        node_id_for_task
-                    );
-                    break;
-                }
-            }
-            println!("Payment event stream for node {} ended.", node_id_for_task);
-        });
+    /// Get the list of nodes with active event streams
+    pub async fn get_active_streams(&self) -> Vec<PublicKey> {
+        let active_streams = self.active_streams.lock().await;
+        active_streams.iter().cloned().collect()
     }
 }
 

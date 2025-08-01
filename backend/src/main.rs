@@ -14,9 +14,11 @@ mod services;
 mod utils;
 
 use crate::api::common::ApiResponse;
+use crate::services::background_event_service::BackgroundEventService;
 use axum::{Extension, Router, response::Json, routing::get};
 use config::Config;
 use database::Database;
+use std::sync::Arc;
 use tracing::info;
 use tracing_subscriber::fmt::init;
 
@@ -27,6 +29,9 @@ async fn main() {
     let config = Config::from_env().unwrap();
     let db = Database::new(&config).await.unwrap();
     let pool = db.pool().clone();
+
+    // Initialize background event service
+    let event_service = Arc::new(BackgroundEventService::new(pool.clone()));
 
     let app = Router::new()
         .route("/", get(root_handler))
@@ -51,7 +56,8 @@ async fn main() {
             "/api/invoices",
             api::invoice::routes::invoice_router().await,
         )
-        .layer(Extension(pool));
+        .layer(Extension(pool))
+        .layer(Extension(event_service));
 
     let bind_address = format!("0.0.0.0:{}", config.server_port);
     let listener = tokio::net::TcpListener::bind(&bind_address).await.unwrap();

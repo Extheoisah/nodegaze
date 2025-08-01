@@ -3,7 +3,7 @@ use crate::api::common::ApiResponse;
 use crate::database::models::CreateCredential;
 use crate::errors::LightningError;
 use crate::repositories::credential_repository::CredentialRepository;
-use crate::services::event_manager::{EventCollector, EventHandler, NodeSpecificEvent};
+use crate::services::background_event_service::BackgroundEventService;
 use crate::services::node_manager::LightningClient;
 use crate::services::node_manager::{
     ClnConnection, ClnNode, ConnectionRequest, LndConnection, LndNode,
@@ -16,8 +16,6 @@ use axum::{
 };
 use sqlx::SqlitePool;
 use std::sync::Arc;
-use tokio::sync::Mutex;
-use tokio::sync::mpsc;
 
 use uuid::Uuid;
 
@@ -33,6 +31,7 @@ pub struct NodeAuthResponse {
 pub async fn authenticate_node(
     Extension(pool): Extension<SqlitePool>,
     Extension(claims): Extension<Option<Claims>>,
+    Extension(event_service): Extension<Arc<BackgroundEventService>>,
     Json(payload): Json<ConnectionRequest>,
 ) -> Result<Json<ApiResponse<NodeAuthResponse>>, (StatusCode, String)> {
     // First authenticate with the node
@@ -45,32 +44,13 @@ pub async fn authenticate_node(
 
                     let info = lnd_node.info.clone();
 
-                    let (sender, receiver) = mpsc::channel::<NodeSpecificEvent>(32);
-
-                    let collector = EventCollector::new(sender);
-                    let lnd_node_: Arc<Mutex<Box<dyn LightningClient + Send + Sync + 'static>>> =
-                        Arc::new(Mutex::new(Box::new(lnd_node)));
-
-                    collector.start_sending(info.pubkey, lnd_node_).await;
-
-                    // Start processing events with database context
-                    let handler = if let Some(user_claims) = &claims {
-                        tracing::info!(
-                            "Creating handler with database context for user: {}",
-                            user_claims.sub
-                        );
-                        EventHandler::with_context(
-                            pool.clone(),
-                            user_claims.account_id.clone(),
-                            user_claims.sub.clone(),
-                            info.pubkey.to_string(),
-                            info.alias.clone(),
-                        )
-                    } else {
-                        tracing::info!("Creating handler without database context");
-                        EventHandler::new()
-                    };
-                    handler.start_receiving(receiver);
+                    // Initialize background event service and automatically start all event subscriptions
+                    if let Err(e) = event_service
+                        .initialize_for_node(&info, &payload, claims.clone())
+                        .await
+                    {
+                        tracing::warn!("Failed to initialize background event service: {}", e);
+                    }
 
                     info
                 }
@@ -96,33 +76,13 @@ pub async fn authenticate_node(
 
                     let info = cln_node.info.clone();
 
-                    let (sender, receiver) = mpsc::channel::<NodeSpecificEvent>(32);
-
-                    let collector = EventCollector::new(sender);
-                    let cln_node_: Arc<Mutex<Box<dyn LightningClient + Send + Sync + 'static>>> =
-                        Arc::new(Mutex::new(Box::new(cln_node)));
-
-                    collector.start_sending(info.pubkey, cln_node_).await;
-
-                    // Start processing events with database context
-                    let handler = if let Some(user_claims) = &claims {
-                        tracing::info!(
-                            "Creating CLN handler with database context for user: {}",
-                            user_claims.sub
-                        );
-                        EventHandler::with_context(
-                            pool.clone(),
-                            user_claims.account_id.clone(),
-                            user_claims.sub.clone(),
-                            info.pubkey.to_string(),
-                            info.alias.clone(),
-                        )
-                    } else {
-                        tracing::info!("Creating CLN handler without database context");
-                        EventHandler::new()
-                    };
-
-                    handler.start_receiving(receiver);
+                    // Initialize background event service and automatically start all event subscriptions
+                    if let Err(e) = event_service
+                        .initialize_for_node(&info, &payload, claims.clone())
+                        .await
+                    {
+                        tracing::warn!("Failed to initialize background event service: {}", e);
+                    }
 
                     info
                 }
@@ -327,7 +287,6 @@ pub async fn get_node_info_jwt(
     }
 }
 
-// Keep existing functions...
 pub async fn connect_lightning(
     conn: ConnectionRequest,
 ) -> Result<Box<dyn LightningClient + Send>, LightningError> {
