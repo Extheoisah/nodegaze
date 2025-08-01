@@ -87,29 +87,6 @@ The modern web interface for NodeGaze, built with Next.js 14, React, and TypeScr
 4. **Open in Browser**
    Navigate to [http://localhost:3000](http://localhost:3000)
 
-## 📁 Project Structure
-
-```
-src/
-├── app/                    # Next.js App Router pages
-│   ├── api/               # API routes (NextAuth, proxy endpoints)
-│   ├── events/            # Events dashboard and detail pages
-│   ├── login/             # Authentication pages
-│   ├── signup/            
-│   └── layout.tsx         # Root layout
-├── components/            # Reusable React components
-│   ├── ui/               # shadcn/ui components
-│   ├── app-layout.tsx    # Main app layout
-│   ├── login-form.tsx    # Authentication forms
-│   └── notification-dialog.tsx
-├── hooks/                # Custom React hooks
-├── lib/                  # Utility libraries
-│   ├── auth.ts          # NextAuth configuration
-│   └── utils.ts         # Utility functions
-├── types/               # TypeScript type definitions
-└── middleware.ts        # Next.js middleware for auth
-```
-
 ## 🎨 UI Components
 
 The project uses [shadcn/ui](https://ui.shadcn.com/) for consistent, accessible components:
