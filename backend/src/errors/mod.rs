@@ -54,6 +54,9 @@ pub enum LightningError {
     /// Parse error for things like pubkeys or strings.
     #[error("Parse error: {0}")]
     Parse(String),
+    #[error("Network error: {0}")]
+    /// Network error.
+    NetworkError(String),
 }
 
 /// Generic service error that can be used across all entities

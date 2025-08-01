@@ -1,20 +1,23 @@
 use crate::utils::handlers_common::{
-    extract_cln_tls_components, extract_node_credentials, handle_node_error, parse_payment_hash,
+    create_node_client, extract_node_credentials, handle_node_error, parse_payment_hash,
     parse_public_key,
 };
 use crate::utils::jwt::Claims;
 use crate::{
-    api::common::ApiResponse,
-    services::node_manager::{ClnConnection, ClnNode, LightningClient, LndConnection, LndNode},
-    utils::{CustomInvoice, NodeId},
+    api::common::{
+        ApiResponse, FilterRequest, NumericOperator, PaginatedData, PaginationFilter,
+        PaginationMeta, apply_pagination, validation_error_response,
+    },
+    utils::{CustomInvoice, InvoiceStatus},
 };
 use axum::{
     Json,
-    extract::{Extension, Path},
+    extract::{Extension, Path, Query},
     http::StatusCode,
 };
+use validator::Validate;
 
-/// Handler for getting payment details
+/// Handler for getting invoice details
 #[axum::debug_handler]
 pub async fn get_invoice_details(
     Extension(claims): Extension<Claims>,
@@ -24,129 +27,125 @@ pub async fn get_invoice_details(
     let node_credentials = extract_node_credentials(&claims)?;
     let public_key = parse_public_key(&node_credentials.node_id)?;
 
-    match node_credentials.node_type.as_str() {
-        "lnd" => {
-            let lnd_node = LndNode::new(LndConnection {
-                id: NodeId::PublicKey(public_key),
-                address: node_credentials.address.clone(),
-                macaroon: node_credentials.macaroon.clone(),
-                cert: node_credentials.tls_cert.clone(),
-            })
-            .await
-            .map_err(|e| handle_node_error(e, "connect to LND node"))?;
+    let node_client = create_node_client(&node_credentials, public_key).await?;
 
-            let invoice_details = lnd_node
-                .get_invoice_details(&payment_hash)
-                .await
-                .map_err(|e| handle_node_error(e, "get invoice details"))?;
+    let invoice_details = node_client
+        .get_invoice_details(&payment_hash)
+        .await
+        .map_err(|e| handle_node_error(e, "get invoice details"))?;
 
-            Ok(Json(ApiResponse::success(
-                invoice_details,
-                "Invoice details retrieved successfully",
-            )))
-        }
+    Ok(Json(ApiResponse::success(
+        invoice_details,
+        "Invoice details retrieved successfully",
+    )))
+}
 
-        "cln" => {
-            let (client_cert, client_key, ca_cert) = extract_cln_tls_components(node_credentials)?;
+/// Handler for listing all invoices with filtering and pagination
+#[axum::debug_handler]
+pub async fn list_invoices(
+    Extension(claims): Extension<Claims>,
+    Query(filter): Query<InvoiceFilter>,
+) -> Result<Json<ApiResponse<PaginatedData<CustomInvoice>>>, (StatusCode, String)> {
+    if let Err(validation_errors) = filter.validate() {
+        return Err(validation_error_response(validation_errors));
+    }
 
-            let cln_node = ClnNode::new(ClnConnection {
-                id: NodeId::PublicKey(public_key),
-                address: node_credentials.address.clone(),
-                ca_cert,
-                client_cert,
-                client_key,
-            })
-            .await
-            .map_err(|e| handle_node_error(e, "connect to CLN node"))?;
+    let node_credentials = extract_node_credentials(&claims)?;
+    let public_key = parse_public_key(&node_credentials.node_id)?;
 
-            let payment_details = cln_node
-                .get_invoice_details(&payment_hash)
-                .await
-                .map_err(|e| handle_node_error(e, "get invoice details"))?;
+    let node_client = create_node_client(&node_credentials, public_key).await?;
 
-            Ok(Json(ApiResponse::success(
-                payment_details,
-                "Invoice details retrieved successfully",
-            )))
-        }
+    let invoices = node_client
+        .list_invoices()
+        .await
+        .map_err(|e| handle_node_error(e, "list invoices"))?;
 
-        _ => {
-            let error_response = ApiResponse::<()>::error(
-                "Unsupported node type".to_string(),
-                "unsupported_node_type",
-                None,
-            );
-            Err((
-                StatusCode::BAD_REQUEST,
-                serde_json::to_string(&error_response).unwrap(),
-            ))
+    process_invoices_with_filters(invoices, &filter).await
+}
+
+pub type InvoiceFilter = FilterRequest<InvoiceStatus>;
+
+impl FilterRequest<InvoiceStatus> {
+    pub fn to_pagination_filter(&self) -> PaginationFilter {
+        PaginationFilter {
+            page: self.page,
+            per_page: self.per_page,
         }
     }
 }
 
-#[axum::debug_handler]
-pub async fn list_invoices(
-    Extension(claims): Extension<Claims>,
-) -> Result<Json<ApiResponse<Vec<CustomInvoice>>>, (StatusCode, String)> {
-    let node_credentials = extract_node_credentials(&claims)?;
-    let public_key = parse_public_key(&node_credentials.node_id)?;
+/// Apply all filters to a collection of invoices
+fn apply_invoice_filters(
+    mut invoices: Vec<CustomInvoice>,
+    filter: &InvoiceFilter,
+) -> Vec<CustomInvoice> {
+    // Apply state filter
+    if let Some(filter_states) = &filter.states {
+        let normalized_filter_states: std::collections::HashSet<String> = filter_states
+            .iter()
+            .map(|state| state.to_string().to_lowercase())
+            .collect();
 
-    match node_credentials.node_type.as_str() {
-        "lnd" => {
-            let lnd_node = LndNode::new(LndConnection {
-                id: NodeId::PublicKey(public_key),
-                address: node_credentials.address.clone(),
-                macaroon: node_credentials.macaroon.clone(),
-                cert: node_credentials.tls_cert.clone(),
-            })
-            .await
-            .map_err(|e| handle_node_error(e, "connect to LND node"))?;
+        invoices.retain(|invoice| {
+            normalized_filter_states.contains(&invoice.state.to_string().to_lowercase())
+        });
+    }
 
-            let invoices = lnd_node
-                .list_invoices()
-                .await
-                .map_err(|e| handle_node_error(e, "list invoices"))?;
-
-            Ok(Json(ApiResponse::success(
-                invoices,
-                "Invoices retrieved successfully",
-            )))
-        }
-
-        "cln" => {
-            let (client_cert, client_key, ca_cert) = extract_cln_tls_components(node_credentials)?;
-
-            let cln_node = ClnNode::new(ClnConnection {
-                id: NodeId::PublicKey(public_key),
-                address: node_credentials.address.clone(),
-                ca_cert,
-                client_cert,
-                client_key,
-            })
-            .await
-            .map_err(|e| handle_node_error(e, "connect to CLN node"))?;
-
-            let invoices = cln_node
-                .list_invoices()
-                .await
-                .map_err(|e| handle_node_error(e, "list invoices"))?;
-
-            Ok(Json(ApiResponse::success(
-                invoices,
-                "Invoices retrieved successfully",
-            )))
-        }
-
-        _ => {
-            let error_response = ApiResponse::<()>::error(
-                "Unsupported node type".to_string(),
-                "unsupported_node_type",
-                None,
-            );
-            Err((
-                StatusCode::BAD_REQUEST,
-                serde_json::to_string(&error_response).unwrap(),
-            ))
+    // Apply amount filter (using value field)
+    if let (Some(operator), Some(filter_value)) = (&filter.operator, filter.value) {
+        if filter_value < 0 {
+            // Negative filter values shouldn't match positive amounts
+            invoices.clear();
+        } else {
+            let filter_value_u64 = filter_value as u64;
+            invoices.retain(|invoice| match operator {
+                NumericOperator::Gte => invoice.value >= filter_value_u64,
+                NumericOperator::Lte => invoice.value <= filter_value_u64,
+                NumericOperator::Eq => invoice.value == filter_value_u64,
+                NumericOperator::Gt => invoice.value > filter_value_u64,
+                NumericOperator::Lt => invoice.value < filter_value_u64,
+            });
         }
     }
+
+    // Apply date range filter (for invoice creation dates)
+    if filter.from.is_some() || filter.to.is_some() {
+        if let Some(from_date) = filter.from {
+            invoices.retain(|invoice| {
+                invoice
+                    .creation_date
+                    .map(|creation_date| creation_date >= from_date.timestamp())
+                    .unwrap_or(false)
+            });
+        }
+
+        if let Some(to_date) = filter.to {
+            invoices.retain(|invoice| {
+                invoice
+                    .creation_date
+                    .map(|creation_date| creation_date <= to_date.timestamp())
+                    .unwrap_or(false)
+            });
+        }
+    }
+
+    invoices
+}
+
+/// Process invoices with filters and pagination
+async fn process_invoices_with_filters(
+    all_invoices: Vec<CustomInvoice>,
+    filter: &InvoiceFilter,
+) -> Result<Json<ApiResponse<PaginatedData<CustomInvoice>>>, (StatusCode, String)> {
+    let filtered_invoices = apply_invoice_filters(all_invoices, filter);
+    let total_filtered_count = filtered_invoices.len() as u64;
+    let pagination_filter = filter.to_pagination_filter();
+    let paginated_invoices = apply_pagination(filtered_invoices, &pagination_filter);
+    let pagination_meta = PaginationMeta::from_filter(&pagination_filter, total_filtered_count);
+    let paginated_data = PaginatedData::new(paginated_invoices, total_filtered_count);
+
+    Ok(Json(ApiResponse::ok_paginated(
+        paginated_data,
+        pagination_meta,
+    )))
 }

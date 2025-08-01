@@ -5,7 +5,7 @@
 
 use crate::errors::LightningError;
 use bitcoin::secp256k1::PublicKey;
-use bitcoin::OutPoint;
+use bitcoin:: Txid;
 use expanduser::expanduser;
 use lightning::ln::features::NodeFeatures;
 use serde::{Deserialize, Serialize};
@@ -19,6 +19,7 @@ pub mod crypto;
 pub mod generate_random_string;
 pub mod handlers_common;
 pub mod jwt;
+pub mod sats_to_usd;
 
 /// Represents a node id, either by its public key or alias.
 #[derive(Serialize, Debug, Clone)]
@@ -105,20 +106,20 @@ pub struct ChannelDetails {
     pub local_balance_sat: u64,
     pub remote_balance_sat: u64,
     pub capacity_sat: u64,
-    pub active: bool,
+    pub active: Option<bool>,
     pub private: bool,
     pub remote_pubkey: PublicKey,
-    pub commit_fee_sat: u64,
-    pub local_chan_reserve_sat: u64,
-    pub remote_chan_reserve_sat: u64,
-    pub num_updates: u64,
-    pub total_satoshis_sent: u64,
-    pub total_satoshis_received: u64,
+    pub commit_fee_sat: Option<u64>,
+    pub local_chan_reserve_sat: Option<u64>,
+    pub remote_chan_reserve_sat: Option<u64>,
+    pub num_updates: Option<u64>,
+    pub total_satoshis_sent: Option<u64>,
+    pub total_satoshis_received: Option<u64>,
     pub channel_age_blocks: Option<u32>,
-    pub last_update: Option<SystemTime>,
     pub opening_cost_sat: Option<u64>,
-    pub initiator: bool,
-    pub channel_point: OutPoint,
+    pub initiator: Option<bool>,
+    pub txid: Option<Txid>,
+    pub vout: Option<u32>,
     pub node1_policy: Option<NodePolicy>,
     pub node2_policy: Option<NodePolicy>,
 }
@@ -132,7 +133,7 @@ pub struct ChannelSummary {
     pub remote_balance: u64,
     pub local_balance: u64,
     pub capacity: u64,
-    pub creation_date: Option<i64>,
+    pub last_update: Option<u64>,
     pub uptime: Option<u64>,
 }
 
@@ -166,7 +167,7 @@ pub struct NodePolicy {
     pub max_htlc_msat: Option<u64>,
     pub time_lock_delta: u16,
     pub disabled: bool,
-    pub last_update: Option<SystemTime>,
+    pub last_update: Option<u64>,
 }
 
 impl Display for NodePolicy {
@@ -222,7 +223,8 @@ pub struct NodeMetrics {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PaymentDetails {
     pub state: PaymentState,
-    pub amount: u64,
+    pub amount_sat: u64,
+    pub amount_usd: f64,
     pub routing_fee: Option<u64>,
     pub network: Option<String>,
     pub description: Option<String>,
@@ -235,11 +237,11 @@ pub struct PaymentDetails {
 }
 
 /// Represents a Lightning Network payment initiated or received by the node.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PaymentSummary {
     pub state: PaymentState,
     pub amount_sat: u64,
-    pub amount_usd: u64,
+    pub amount_usd: f64,
     pub routing_fee: Option<u64>,
     pub creation_time: Option<SystemTime>,
     pub invoice: Option<String>,
@@ -292,10 +294,11 @@ pub struct Hop {
     pub expiry: Option<u64>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub enum PaymentState {
     Inflight,
     Failed,
+    #[default]
     Settled,
 }
 
@@ -306,17 +309,19 @@ pub enum PaymentType {
     Forwarded,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub enum InvoiceStatus {
+    #[default]
     Settled,
     Open,
     Expired,
     Failed,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub enum ChannelState {
     Opening,  // funding tx not confirmed
+    #[default]
     Active,   // normal / available
     Disabled, // temporarily disabled
     Closing,  // cooperative or force close initiated
@@ -330,15 +335,6 @@ pub enum LogLevel {
     Info,
     Warn,
     Error,
-    Unknown,
-}
-
-/// Status of a Lightning payment attempt.
-#[derive(Debug, Serialize, Deserialize)]
-pub enum PaymentStatus {
-    Inflight,
-    Succeeded,
-    Failed,
     Unknown,
 }
 
@@ -439,8 +435,8 @@ impl FromStr for ShortChannelID {
     }
 }
 
-impl fmt::Display for ShortChannelID {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for ShortChannelID {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
@@ -454,5 +450,95 @@ impl From<u64> for ShortChannelID {
 impl From<ShortChannelID> for u64 {
     fn from(id: ShortChannelID) -> u64 {
         id.0
+    }
+}
+
+impl FromStr for PaymentState {
+    type Err = String;
+    
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input.to_lowercase().as_str() {
+            "inflight" => Ok(PaymentState::Inflight),
+            "failed" => Ok(PaymentState::Failed),
+            "settled" => Ok(PaymentState::Settled),
+            _ => Err(format!("Invalid payment state: {}", input)),
+        }
+    }
+}
+
+impl Display for PaymentState {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let state = match self {
+            PaymentState::Inflight => "inflight",
+            PaymentState::Failed => "failed",
+            PaymentState::Settled => "settled",
+        };
+        write!(f, "{}", state)
+    }
+}
+
+impl PaymentState {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PaymentState::Inflight => "inflight",
+            PaymentState::Failed => "failed",
+            PaymentState::Settled => "settled",
+        }
+    }
+}
+
+impl Display for InvoiceStatus {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let status = match self {
+            InvoiceStatus::Settled => "settled",
+            InvoiceStatus::Open => "open",
+            InvoiceStatus::Expired => "expired",
+            InvoiceStatus::Failed => "failed",
+        };
+        write!(f, "{}", status)
+    }
+}
+
+impl FromStr for InvoiceStatus {
+    type Err = String;
+    
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input.to_lowercase().as_str() {
+            "settled" => Ok(InvoiceStatus::Settled),
+            "open" => Ok(InvoiceStatus::Open),
+            "expired" => Ok(InvoiceStatus::Expired),
+            "failed" => Ok(InvoiceStatus::Failed),
+            _ => Err(format!("Invalid invoice status: {}", input)),
+        }
+    }
+}
+
+impl Display for ChannelState {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let state = match self {
+            ChannelState::Opening => "opening",
+            ChannelState::Active => "active",
+            ChannelState::Disabled => "disabled",
+            ChannelState::Closing => "closing",
+            ChannelState::Closed => "closed",
+            ChannelState::Failed => "failed",
+        };
+        write!(f, "{}", state)
+    }
+}
+
+impl FromStr for ChannelState {
+    type Err = String;
+    
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input.to_lowercase().as_str() {
+            "opening" => Ok(ChannelState::Opening),
+            "active" => Ok(ChannelState::Active),
+            "disabled" => Ok(ChannelState::Disabled),
+            "closing" => Ok(ChannelState::Closing),
+            "closed" => Ok(ChannelState::Closed),
+            "failed" => Ok(ChannelState::Failed),
+            _ => Err(format!("Invalid channel state: {}", input)),
+        }
     }
 }
