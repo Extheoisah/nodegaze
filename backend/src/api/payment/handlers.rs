@@ -9,10 +9,10 @@ use crate::utils::handlers_common::{
 use crate::utils::jwt::Claims;
 use crate::{
     api::common::{
-        ApiResponse, FilterRequest, NumericOperator, PaginatedData, PaginationFilter,
-        PaginationMeta, apply_pagination, get_filtered_count, validation_error_response,
+        ApiResponse, NumericOperator, PaginatedData, PaginationFilter,
+        PaginationMeta, apply_pagination, validation_error_response, deserialize_states
     },
-    utils::{PaymentDetails, PaymentState, PaymentSummary},
+    utils::{PaymentDetails, PaymentState, PaymentSummary, PaymentType, deserialize_payment_types},
 };
 use axum::{
     Json,
@@ -20,6 +20,8 @@ use axum::{
     http::StatusCode,
 };
 use validator::Validate;
+use serde::{Serialize, Deserialize};
+use chrono::{DateTime, Utc};
 
 /// Handler for getting payment details
 #[axum::debug_handler]
@@ -67,9 +69,40 @@ pub async fn list_payments(
     process_payments_with_filters(all_payments, &filter).await
 }
 
-pub type PaymentFilter = FilterRequest<PaymentState>;
+#[derive(Debug, Serialize, Deserialize, Validate)]
+pub struct PaymentFilterRequest {
+    /// Page number (1-indexed)
+    #[validate(range(min = 1))]
+    pub page: Option<u32>,
 
-impl FilterRequest<PaymentState> {
+    /// Number of items per page
+    #[validate(range(min = 1, max = 100))]
+    pub per_page: Option<u32>,
+
+    /// The comparison operator
+    pub operator: Option<NumericOperator>,
+
+    /// The value to compare against
+    pub value: Option<i64>,
+
+    /// Start date (inclusive)
+    pub from: Option<DateTime<Utc>>,
+
+    /// End date (inclusive)
+    pub to: Option<DateTime<Utc>>,
+
+    /// Payment states filter
+    #[serde(default, deserialize_with = "deserialize_states")]
+    pub states: Option<Vec<PaymentState>>,
+
+    /// Payment type filter (NEW - only for payments)
+    #[serde(default, deserialize_with = "deserialize_payment_types")]
+    pub payment_types: Option<Vec<PaymentType>>,
+}
+
+pub type PaymentFilter = PaymentFilterRequest;
+
+impl PaymentFilterRequest {
     pub fn to_pagination_filter(&self) -> PaginationFilter {
         PaginationFilter {
             page: self.page,
@@ -83,7 +116,7 @@ fn apply_payment_filters(
     mut payments: Vec<PaymentSummary>,
     filter: &PaymentFilter,
 ) -> Vec<PaymentSummary> {
-    // Apply state filter using the existing states field
+    // Apply state filter
     if let Some(filter_states) = &filter.states {
         payments.retain(|payment| {
             filter_states
@@ -92,10 +125,20 @@ fn apply_payment_filters(
         });
     }
 
+    // Apply payment type filter
+    if let Some(filter_payment_types) = &filter.payment_types {
+        payments.retain(|payment| {
+            filter_payment_types
+                .iter()
+                .any(|pt| {
+                    payment.payment_type.as_str().to_lowercase() == pt.as_str().to_lowercase()
+                })
+        });
+    }
+
     // Apply amount filter
     if let (Some(operator), Some(filter_value)) = (&filter.operator, filter.value) {
         if filter_value < 0 {
-            // Negative filter values shouldn't match positive amounts
             payments.clear();
         } else {
             let filter_value_u64 = filter_value as u64;
@@ -138,7 +181,7 @@ async fn process_payments_with_filters(
     filter: &PaymentFilter,
 ) -> Result<Json<ApiResponse<PaginatedData<PaymentSummary>>>, (StatusCode, String)> {
     let filtered_payments = apply_payment_filters(all_payments, filter);
-    let total_filtered_count = get_filtered_count(&filtered_payments);
+    let total_filtered_count = filtered_payments.len() as u64;
     let pagination_filter = filter.to_pagination_filter();
     let paginated_payments = apply_pagination(filtered_payments, &pagination_filter);
     let pagination_meta = PaginationMeta::from_filter(&pagination_filter, total_filtered_count);
