@@ -96,10 +96,10 @@ export default function MessageInformationPage() {
     });
   };
 
-     const formatEventTypeDisplay = (eventType: string) => {
-     // Just return the original event type
-     return eventType;
-   };
+  const formatEventTypeDisplay = (eventType: string) => {
+    // Just return the original event type
+    return eventType;
+  };
 
   const generateBreadcrumb = (eventData: EventData) => {
     const shortNodeAlias = eventData.node_alias?.substring(0, 6) || "unknown";
@@ -143,9 +143,10 @@ export default function MessageInformationPage() {
         <div className="space-y-6">
           <div className="flex items-center gap-4">
             <Button
-              variant="ghost"
+              variant="outline"
+              size="lg"
               onClick={handleBackNavigation}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 bg-transparent text-grey-dark hover:text-grey-dark hover:bg-grey-sub-background cursor-pointer"
             >
               <ArrowLeft className="h-4 w-4" />
               Back
@@ -170,9 +171,10 @@ export default function MessageInformationPage() {
         {/* Header */}
         <div className="flex items-center gap-4">
           <Button
-            variant="ghost"
+            variant="outline"
+            size="lg"
             onClick={handleBackNavigation}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 bg-transparent text-grey-dark hover:text-grey-dark hover:bg-grey-sub-background cursor-pointer"
           >
             <ArrowLeft className="h-4 w-4" />
             Back
