@@ -5,12 +5,14 @@
 //! and provides methods for interacting with the Lightning node RPCs.
 
 use crate::{
+    auth::errors,
     errors::LightningError,
     services::event_manager::{CLNEvent, LNDEvent, NodeSpecificEvent},
     utils::{
         self, ChannelDetails, ChannelState, ChannelSummary, CustomInvoice, Feature, Hop,
         InvoiceHtlc, InvoiceStatus, NodeId, NodeInfo, NodePolicy, PaymentDetails, PaymentHtlc,
-        PaymentState, PaymentSummary, Route, ShortChannelID, sats_to_usd::PriceConverter,
+        PaymentState, PaymentSummary, PaymentType, Route, ShortChannelID,
+        sats_to_usd::PriceConverter,
     },
 };
 
@@ -24,13 +26,13 @@ use cln_grpc::pb::{
 use futures::stream::{SelectAll, StreamExt};
 use hex;
 use lightning::ln::{PaymentHash, features::NodeFeatures};
+use lightning_invoice::{Bolt11Invoice, Bolt11InvoiceDescription};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
     convert::TryFrom,
     pin::Pin,
     str::FromStr,
-    time::{SystemTime, UNIX_EPOCH},
 };
 use tokio::time::Duration;
 use tokio::{
@@ -44,8 +46,9 @@ use tonic::transport::{Certificate, Channel, ClientTlsConfig, Identity};
 use tonic_lnd::{
     Client,
     lnrpc::{
-        ChannelEventSubscription, ChannelEventUpdate, ChannelGraphRequest, GetInfoRequest, Invoice,
-        InvoiceSubscription, ListChannelsRequest, ListPaymentsRequest, NodeInfoRequest,
+        ChannelEventSubscription, ChannelEventUpdate, ChannelGraphRequest,
+        ForwardingHistoryRequest, GetInfoRequest, Invoice, InvoiceSubscription,
+        ListChannelsRequest, ListInvoiceRequest, ListPaymentsRequest, NodeInfoRequest,
         channel_event_update::{Channel as EventChannel, UpdateType as LndChannelUpdateType},
         invoice::InvoiceState,
         payment::PaymentStatus,
@@ -197,8 +200,227 @@ impl LndNode {
         client.lightning().clone()
     }
 
-    pub async fn get_price_converter(&self) -> &PriceConverter {
-        &self.price_converter
+    async fn process_outgoing_payment(
+        &self,
+        payment: tonic_lnd::lnrpc::Payment,
+    ) -> Result<PaymentDetails, LightningError> {
+        let state = match PaymentStatus::try_from(payment.status).unwrap_or(PaymentStatus::Unknown)
+        {
+            PaymentStatus::Unknown | PaymentStatus::InFlight => PaymentState::Inflight,
+            PaymentStatus::Succeeded => PaymentState::Settled,
+            PaymentStatus::Failed => PaymentState::Failed,
+        };
+
+        let creation_time = payment
+            .creation_time_ns
+            .try_into()
+            .ok()
+            .map(|timestamp_ns: u64| timestamp_ns / 1_000_000_000);
+
+        let completed_at = match state {
+            PaymentState::Settled => payment.htlcs.last().and_then(|htlc| {
+                let resolve_time = htlc.resolve_time_ns as u64;
+                if resolve_time > 0 {
+                    Some(resolve_time / 1_000_000_000)
+                } else {
+                    None
+                }
+            }),
+            _ => None,
+        };
+
+        // Process HTLCs and extract destination pubkey from the last hop
+        let (htlcs, destination_pubkey) = {
+            let mut destination_pubkey = None;
+            let htlcs = payment
+                .htlcs
+                .into_iter()
+                .map(|htlc| {
+                    let route = htlc.route.map(|raw_route| {
+                        // Get destination pubkey from last hop if available
+                        if let Some(last_hop) = raw_route.hops.last() {
+                            if let Ok(pubkey) = PublicKey::from_str(&last_hop.pub_key) {
+                                destination_pubkey = Some(pubkey);
+                            }
+                        }
+
+                        Route {
+                            total_time_lock: raw_route.total_time_lock,
+                            total_fees: (raw_route.total_fees_msat / 1000).try_into().unwrap_or(0),
+                            total_amt: (raw_route.total_amt_msat / 1000).try_into().unwrap_or(0),
+                            hops: raw_route
+                                .hops
+                                .into_iter()
+                                .map(|hop| Hop {
+                                    pubkey: PublicKey::from_str(&hop.pub_key)
+                                        .unwrap_or(self.info.pubkey),
+                                    chan_id: ShortChannelID(hop.chan_id.try_into().unwrap_or(0)),
+                                    amount_to_forward: (hop.amt_to_forward_msat / 1000) as u64,
+                                    fee: Some((hop.fee_msat / 1000) as u64),
+                                    expiry: Some(hop.expiry.into()),
+                                })
+                                .collect(),
+                        }
+                    });
+
+                    PaymentHtlc {
+                        routes: route.map_or_else(Vec::new, |route| vec![route]),
+                        attempt_id: htlc.attempt_id,
+                        attempt_time: {
+                            let attempt_ns = htlc.attempt_time_ns as u64;
+                            (attempt_ns > 0).then_some(attempt_ns / 1_000_000_000)
+                        },
+                        resolve_time: {
+                            let resolve_ns = htlc.resolve_time_ns as u64;
+                            (resolve_ns > 0).then_some(resolve_ns / 1_000_000_000)
+                        },
+                        failure_reason: htlc
+                            .failure
+                            .as_ref()
+                            .map(|failure| format!("{:?}", failure.code())),
+                        failure_code: htlc.failure.as_ref().map(|failure| failure.code() as u16),
+                    }
+                })
+                .collect();
+
+            (htlcs, destination_pubkey)
+        };
+
+        // Parse invoice for description
+        let description = Bolt11Invoice::from_str(&payment.payment_request)
+            .ok()
+            .and_then(|invoice| {
+                if let Bolt11InvoiceDescription::Direct(desc) = invoice.description() {
+                    Some(desc.to_string())
+                } else {
+                    None
+                }
+            });
+
+        let network = self
+            .get_network()
+            .await
+            .map(|network| Some(network.to_string()))
+            .unwrap_or(None);
+
+        let amount_sat: u64 = payment.value_sat.try_into().unwrap_or(0);
+        let amount_usd = self.price_converter.sats_to_usd(amount_sat).await?;
+
+        Ok(PaymentDetails {
+            state,
+            payment_type: PaymentType::Outgoing,
+            amount_sat,
+            amount_usd,
+            routing_fee: Some(payment.fee_sat.try_into().unwrap_or(0)),
+            network,
+            description,
+            creation_time,
+            invoice: payment.payment_request.into(),
+            payment_hash: payment.payment_hash,
+            destination_pubkey,
+            completed_at,
+            htlcs,
+        })
+    }
+
+    async fn process_incoming_payment(
+        &self,
+        invoice: tonic_lnd::lnrpc::Invoice,
+    ) -> Result<PaymentDetails, LightningError> {
+        let state = match invoice.state {
+            0 => {
+                // OPEN - check if payment is in progress
+                if invoice.amt_paid_sat > 0 {
+                    PaymentState::Inflight
+                } else {
+                    PaymentState::Inflight // Open invoice waiting for payment
+                }
+            }
+            1 => PaymentState::Settled,  // SETTLED
+            2 => PaymentState::Failed,   // CANCELED
+            3 => PaymentState::Inflight, // ACCEPTED (payment in progress)
+            _ => PaymentState::Inflight, // Default to inflight for unknown states
+        };
+
+        let creation_time = Some(invoice.creation_date as u64);
+
+        let completed_at = match state {
+            PaymentState::Settled | PaymentState::Failed => {
+                if invoice.settle_date > 0 {
+                    Some(invoice.settle_date as u64)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+
+        // Process HTLCs for incoming payments
+        let htlcs: Vec<PaymentHtlc> = invoice
+            .htlcs
+            .into_iter()
+            .map(|htlc| PaymentHtlc {
+                routes: Vec::new(),
+                attempt_id: htlc.htlc_index as u64,
+                attempt_time: {
+                    let accept_ns = htlc.accept_time as u64;
+                    (accept_ns > 0).then_some(accept_ns / 1_000_000_000)
+                },
+                resolve_time: {
+                    let resolve_ns = htlc.resolve_time as u64;
+                    (resolve_ns > 0).then_some(resolve_ns / 1_000_000_000)
+                },
+                failure_reason: None,
+                failure_code: None,
+            })
+            .collect();
+
+        // Parse invoice for description
+        let description = if !invoice.memo.is_empty() {
+            Some(invoice.memo.clone())
+        } else {
+            Bolt11Invoice::from_str(&invoice.payment_request)
+                .ok()
+                .and_then(|parsed_invoice| {
+                    if let Bolt11InvoiceDescription::Direct(desc) = parsed_invoice.description() {
+                        Some(desc.to_string())
+                    } else {
+                        None
+                    }
+                })
+        };
+
+        let network = self
+            .get_network()
+            .await
+            .map(|network| Some(network.to_string()))
+            .unwrap_or(None);
+
+        let amount_sat = if invoice.amt_paid_sat > 0 {
+            invoice.amt_paid_sat as u64
+        } else {
+            invoice.value as u64
+        };
+
+        let amount_usd = self.price_converter.sats_to_usd(amount_sat).await?;
+
+        let destination_pubkey = Some(self.info.pubkey);
+
+        Ok(PaymentDetails {
+            state,
+            payment_type: PaymentType::Incoming,
+            amount_sat,
+            amount_usd,
+            routing_fee: None,
+            network,
+            description,
+            creation_time,
+            invoice: Some(invoice.payment_request),
+            payment_hash: hex::encode(&invoice.r_hash),
+            destination_pubkey,
+            completed_at,
+            htlcs,
+        })
     }
 }
 
@@ -325,8 +547,180 @@ impl ClnNode {
         self.client.lock().await.clone()
     }
 
-    pub async fn get_price_converter(&self) -> &PriceConverter {
-        &self.price_converter
+    async fn get_htlcs_for_payment(
+        &self,
+        payment_hash: &str,
+    ) -> Result<Vec<PaymentHtlc>, LightningError> {
+        let mut client = self.get_client_stub().await;
+
+        // Get individual payment attempts (HTLCs) for this payment
+        let sendpays_response = client
+            .list_send_pays(cln_grpc::pb::ListsendpaysRequest {
+                payment_hash: Some(
+                    hex::decode(payment_hash)
+                        .map_err(|_| LightningError::Parse("Invalid payment hash".to_string()))?,
+                ),
+                ..Default::default()
+            })
+            .await
+            .map_err(|err| {
+                LightningError::RpcError(format!("CLN list_send_pays error: {}", err))
+            })?;
+
+        let htlcs: Vec<PaymentHtlc> = sendpays_response
+            .into_inner()
+            .payments
+            .into_iter()
+            .map(|sendpay| PaymentHtlc {
+                routes: vec![],
+                attempt_id: sendpay.id,
+                attempt_time: Some(sendpay.created_at),
+                resolve_time: sendpay.completed_at,
+                failure_reason: sendpay.erroronion.map(|_| "Payment failed".to_string()),
+                failure_code: None,
+            })
+            .collect();
+
+        Ok(htlcs)
+    }
+
+    async fn process_outgoing_payment(
+        &self,
+        payment: cln_grpc::pb::ListpaysPays,
+    ) -> Result<PaymentDetails, LightningError> {
+        let state = match payment.status {
+            0 => PaymentState::Inflight, // pending
+            1 => PaymentState::Settled,  // complete
+            2 => PaymentState::Failed,   // failed
+            _ => PaymentState::Failed,
+        };
+
+        // Calculate amounts
+        let amount = payment
+            .amount_msat
+            .as_ref()
+            .map(|amt| amt.msat / 1000)
+            .unwrap_or(0);
+        let sent_amount = payment
+            .amount_sent_msat
+            .map(|amt| amt.msat / 1000)
+            .unwrap_or(0);
+        let routing_fee = sent_amount.checked_sub(amount);
+
+        // Get destination pubkey
+        let destination_pubkey = match &payment.destination {
+            Some(hex_str) => {
+                let hex_str = String::from_utf8(hex_str.clone()).map_err(|err| {
+                    LightningError::Parse(format!("Invalid destination string: {}", err))
+                })?;
+                let pubkey = PublicKey::from_str(&hex_str).map_err(|err| {
+                    LightningError::Parse(format!("Invalid destination pubkey: {}", err))
+                })?;
+                Some(pubkey)
+            }
+            None => None,
+        };
+
+        let creation_time = (payment.created_at > 0).then_some(payment.created_at as u64);
+
+        let network = self
+            .get_network()
+            .await
+            .map(|network| Some(network.to_string()))
+            .unwrap_or(None);
+
+        let amount_sat: u64 = payment
+            .amount_msat
+            .as_ref()
+            .map(|amt| amt.msat / 1000)
+            .unwrap_or(0);
+
+        let amount_usd = self.price_converter.sats_to_usd(amount_sat).await?;
+
+        // Get HTLC details for this payment
+        let payment_hash_hex = hex::encode(&payment.payment_hash);
+        let htlcs = self
+            .get_htlcs_for_payment(&payment_hash_hex)
+            .await
+            .unwrap_or_else(|_| vec![]);
+
+        Ok(PaymentDetails {
+            state,
+            payment_type: PaymentType::Outgoing,
+            amount_sat,
+            amount_usd,
+            routing_fee,
+            network,
+            description: payment.description,
+            creation_time,
+            invoice: payment.bolt11,
+            payment_hash: payment_hash_hex,
+            destination_pubkey,
+            completed_at: payment.completed_at,
+            htlcs,
+        })
+    }
+
+    async fn process_incoming_payment(
+        &self,
+        invoice: cln_grpc::pb::ListinvoicesInvoices,
+    ) -> Result<PaymentDetails, LightningError> {
+        let state = match invoice.status {
+            0 => PaymentState::Inflight, // unpaid
+            1 => PaymentState::Settled,  // paid
+            2 => PaymentState::Failed,   // expired
+            _ => PaymentState::Inflight,
+        };
+
+        let creation_time = (invoice.expires_at > 0).then_some(invoice.expires_at as u64);
+
+        let completed_at = match state {
+            PaymentState::Settled | PaymentState::Failed => {
+                invoice.paid_at.filter(|&paid_at| paid_at > 0)
+            }
+            _ => None,
+        };
+
+        let network = self
+            .get_network()
+            .await
+            .map(|network| Some(network.to_string()))
+            .unwrap_or(None);
+
+        // Use amount_received_msat if available (actual payment), fallback to amount_msat (invoice amount)
+        let amount_sat = invoice
+            .amount_received_msat
+            .as_ref()
+            .or(invoice.amount_msat.as_ref())
+            .map(|amt| (amt.msat / 1000).try_into().unwrap_or(0))
+            .unwrap_or(0);
+
+        let amount_usd = self.price_converter.sats_to_usd(amount_sat).await?;
+
+        let payment_hash_hex = hex::encode(&invoice.payment_hash);
+        let htlcs = self
+            .get_htlcs_for_payment(&payment_hash_hex)
+            .await
+            .unwrap_or_else(|_| vec![]);
+
+        // For incoming payments, destination is our own node
+        let destination_pubkey = Some(self.info.pubkey);
+
+        Ok(PaymentDetails {
+            state,
+            payment_type: PaymentType::Incoming,
+            amount_sat,
+            amount_usd,
+            routing_fee: None,
+            network,
+            description: invoice.description,
+            creation_time,
+            invoice: invoice.bolt11,
+            payment_hash: payment_hash_hex,
+            destination_pubkey,
+            completed_at,
+            htlcs,
+        })
     }
 }
 
@@ -630,7 +1024,10 @@ impl LightningClient for LndNode {
         payment_hash: &PaymentHash,
     ) -> Result<PaymentDetails, LightningError> {
         let mut lightning_stub = self.get_lightning_stub().await;
-        let response = lightning_stub
+        let hex_hash = hex::encode(payment_hash.0);
+
+        // Check if it's an outgoing payment
+        let payments_response = lightning_stub
             .list_payments(ListPaymentsRequest {
                 include_incomplete: true,
                 ..Default::default()
@@ -642,160 +1039,173 @@ impl LightningClient for LndNode {
             })?
             .into_inner();
 
-        let hex_hash = hex::encode(payment_hash.0);
-
-        let Some(payment) = response
+        if let Some(payment) = payments_response
             .payments
             .into_iter()
             .find(|payment| payment.payment_hash == hex_hash)
-        else {
-            return Err(LightningError::NotFound(format!(
-                "Payment {} not found",
-                hex_hash
-            )));
-        };
-
-        let state = match PaymentStatus::try_from(payment.status).unwrap_or(PaymentStatus::Unknown)
         {
-            PaymentStatus::Unknown | PaymentStatus::InFlight => PaymentState::Inflight,
-            PaymentStatus::Succeeded => PaymentState::Settled,
-            PaymentStatus::Failed => PaymentState::Failed,
-        };
+            return self.process_outgoing_payment(payment).await;
+        }
 
-        let creation_time = payment
-            .creation_time_ns
-            .try_into()
-            .ok()
-            .map(|timestamp_nanos: u64| UNIX_EPOCH + Duration::from_nanos(timestamp_nanos));
-
-        // Process HTLCs and extract destination pubkey from the last hop
-        let (htlcs, destination_pubkey) = {
-            let mut destination_pubkey = None;
-            let htlcs = payment
-                .htlcs
-                .into_iter()
-                .map(|htlc| {
-                    let route = htlc.route.map(|raw_route| {
-                        // Get destination pubkey from last hop if available
-                        if let Some(last_hop) = raw_route.hops.last() {
-                            if let Ok(pubkey) = PublicKey::from_str(&last_hop.pub_key) {
-                                destination_pubkey = Some(pubkey);
-                            }
-                        }
-
-                        Route {
-                            total_time_lock: raw_route.total_time_lock,
-                            total_fees: (raw_route.total_fees_msat / 1000).try_into().unwrap_or(0),
-                            total_amt: (raw_route.total_amt_msat / 1000).try_into().unwrap_or(0),
-                            hops: raw_route
-                                .hops
-                                .into_iter()
-                                .map(|hop| Hop {
-                                    pubkey: PublicKey::from_str(&hop.pub_key)
-                                        .unwrap_or(self.info.pubkey),
-                                    chan_id: ShortChannelID(hop.chan_id.try_into().unwrap_or(0)),
-                                    amount_to_forward: (hop.amt_to_forward_msat / 1000) as u64,
-                                    fee: Some((hop.fee_msat / 1000) as u64),
-                                    expiry: Some(hop.expiry.into()),
-                                })
-                                .collect(),
-                        }
-                    });
-
-                    PaymentHtlc {
-                        routes: route.map_or_else(Vec::new, |route| vec![route]),
-                        attempt_id: htlc.attempt_id,
-                        attempt_time: Some(
-                            UNIX_EPOCH + Duration::from_nanos(htlc.attempt_time_ns as u64),
-                        ),
-                        resolve_time: Some(
-                            UNIX_EPOCH + Duration::from_nanos(htlc.resolve_time_ns as u64),
-                        ),
-                        failure_reason: htlc
-                            .failure
-                            .as_ref()
-                            .map(|failure| format!("{:?}", failure.code())),
-                        failure_code: htlc.failure.as_ref().map(|failure| failure.code() as u16),
-                    }
-                })
-                .collect();
-
-            (htlcs, destination_pubkey)
-        };
-
-        let network = self
-            .get_network()
+        // If it's not an outgoing payment, check if it's an incoming payment (invoice)
+        let invoices_response = lightning_stub
+            .list_invoices(ListInvoiceRequest::default())
             .await
-            .map(|network| Some(network.to_string()))
-            .unwrap_or(None);
+            .map_err(|err| {
+                tracing::error!("list_invoices RPC failed: {}", err);
+                LightningError::RpcError(format!("LND list_invoices error: {}", err))
+            })?
+            .into_inner();
 
-        let amount_sat: u64 = payment.value_sat.try_into().unwrap_or(0);
+        if let Some(invoice) = invoices_response
+            .invoices
+            .into_iter()
+            .find(|invoice| hex::encode(&invoice.r_hash) == hex_hash)
+        {
+            return self.process_incoming_payment(invoice).await;
+        }
 
-        let amount_usd = self.price_converter.sats_to_usd(amount_sat).await?;
-
-        Ok(PaymentDetails {
-            state,
-            amount_sat,
-            amount_usd,
-            routing_fee: Some(payment.fee_sat.try_into().unwrap_or(0)),
-            network,
-            description: None,
-            creation_time,
-            invoice: payment.payment_request.into(),
-            payment_hash: payment.payment_hash,
-            destination_pubkey,
-            completed_at: None,
-            htlcs,
-        })
+        Err(LightningError::NotFound(format!(
+            "Payment {} not found",
+            hex_hash
+        )))
     }
 
     async fn list_payments(&self) -> Result<Vec<PaymentSummary>, LightningError> {
         let mut lightning_stub = self.get_lightning_stub().await;
-        let response = lightning_stub
+        let btc_price = self.price_converter.fetch_btc_price().await?;
+
+        // Fetch outgoing payments
+        let payments_response = lightning_stub
             .list_payments(ListPaymentsRequest::default())
             .await
             .map_err(|err| LightningError::RpcError(err.to_string()))?
             .into_inner();
 
-        let btc_price = self.price_converter.fetch_btc_price().await?;
+        // Fetch incoming invoices
+        let invoices_response = lightning_stub
+            .list_invoices(ListInvoiceRequest::default())
+            .await
+            .map_err(|err| LightningError::RpcError(err.to_string()))?
+            .into_inner();
 
-        Ok(response
+        // Process outgoing payments
+        let outgoing_payments: Vec<PaymentSummary> = payments_response
             .payments
             .into_iter()
-            .map(|payment| {
-                use std::convert::TryFrom;
-                let state = match PaymentStatus::try_from(payment.status)
-                    .unwrap_or(PaymentStatus::Unknown)
-                {
+            .filter_map(|payment| {
+                let status =
+                    PaymentStatus::try_from(payment.status).unwrap_or(PaymentStatus::Unknown);
+                let state = match status {
                     PaymentStatus::Unknown | PaymentStatus::InFlight => PaymentState::Inflight,
                     PaymentStatus::Succeeded => PaymentState::Settled,
                     PaymentStatus::Failed => PaymentState::Failed,
                 };
 
                 let amount_sat: u64 = payment.value_sat.try_into().unwrap_or(0);
+                let amount_usd = PriceConverter::sats_to_usd_with_price(amount_sat, btc_price);
+
+                // Only set completed_at if payment succeeded
+                let completed_at = match state {
+                    PaymentState::Settled => payment
+                        .htlcs
+                        .last()
+                        .map(|htlc| (htlc.resolve_time_ns / 1_000_000_000) as u64),
+                    _ => None,
+                };
+
+                // Only set creation_time if timestamp is valid
+                let creation_time = (payment.creation_time_ns > 0).then_some({
+                    let creation_time_ns = payment.creation_time_ns as u64;
+                    creation_time_ns / 1_000_000_000
+                });
+
+                Some(PaymentSummary {
+                    state,
+                    payment_type: PaymentType::Outgoing,
+                    amount_sat,
+                    amount_usd,
+                    routing_fee: if payment.fee_sat > 0 {
+                        Some(payment.fee_sat as u64)
+                    } else {
+                        None
+                    },
+                    creation_time,
+                    invoice: Some(payment.payment_request),
+                    payment_hash: payment.payment_hash,
+                    completed_at,
+                })
+            })
+            .collect();
+
+        // Process incoming payments (from invoices)
+        let incoming_payments: Vec<PaymentSummary> = invoices_response
+            .invoices
+            .into_iter()
+            .filter(|invoice| {
+                // Exclude invoices without payment attempts (HTLCs)
+                !invoice.htlcs.is_empty()
+            })
+            .filter_map(|invoice| {
+                let state = match invoice.state {
+                    0 => PaymentState::Inflight,
+                    1 => PaymentState::Settled,
+                    2 => PaymentState::Failed,
+                    3 => PaymentState::Inflight,
+                    _ => return None,
+                };
+
+                // Use amt_paid_sat if available, fallback to invoice.value for failed attempts
+                let amount_sat = if invoice.amt_paid_sat > 0 {
+                    invoice.amt_paid_sat as u64
+                } else {
+                    invoice.value as u64
+                };
 
                 let amount_usd = PriceConverter::sats_to_usd_with_price(amount_sat, btc_price);
 
-                PaymentSummary {
+                let creation_time =
+                    (invoice.creation_date > 0).then_some(invoice.creation_date as u64);
+
+                let completed_at = match state {
+                    PaymentState::Settled | PaymentState::Failed => {
+                        (invoice.settle_date > 0).then_some(invoice.settle_date as u64)
+                    }
+                    _ => None,
+                };
+
+                Some(PaymentSummary {
                     state,
+                    payment_type: PaymentType::Incoming,
                     amount_sat,
                     amount_usd,
-                    routing_fee: payment.fee_sat.try_into().ok(),
-                    creation_time: payment.creation_time_ns.try_into().ok().map(
-                        |timestamp_nanos: u64| {
-                            SystemTime::UNIX_EPOCH + Duration::from_nanos(timestamp_nanos)
-                        },
-                    ),
-                    invoice: Some(payment.payment_request),
-                    payment_hash: payment.payment_hash,
-                    completed_at: payment.htlcs.last().map(|htlc| {
-                        (htlc.resolve_time_ns / 1_000_000_000)
-                            .try_into()
-                            .unwrap_or_default()
-                    }),
-                }
+                    routing_fee: None,
+                    creation_time,
+                    invoice: Some(invoice.payment_request),
+                    payment_hash: hex::encode(invoice.r_hash),
+                    completed_at,
+                })
             })
-            .collect())
+            .collect();
+
+        // Combine all with deduplication
+        let mut seen_hashes = HashSet::new();
+        let mut all_payments = Vec::new();
+
+        let mut push_unique = |payment: PaymentSummary| {
+            if seen_hashes.insert(payment.payment_hash.clone()) {
+                all_payments.push(payment);
+            }
+        };
+
+        outgoing_payments.into_iter().for_each(&mut push_unique);
+        incoming_payments.into_iter().for_each(&mut push_unique);
+
+        // Sort by creation time
+        all_payments
+            .sort_by(|outgoing, incoming| incoming.creation_time.cmp(&outgoing.creation_time));
+
+        Ok(all_payments)
     }
 
     async fn stream_events(
@@ -1438,7 +1848,9 @@ impl LightningClient for ClnNode {
         payment_hash: &PaymentHash,
     ) -> Result<PaymentDetails, LightningError> {
         let mut client = self.get_client_stub().await;
+        let hex_hash = hex::encode(payment_hash.0);
 
+        // Check if it's an outgoing payment
         let response = client
             .list_pays(cln_grpc::pb::ListpaysRequest {
                 payment_hash: Some(payment_hash.0.to_vec()),
@@ -1448,91 +1860,54 @@ impl LightningClient for ClnNode {
             .map_err(|err| LightningError::RpcError(format!("CLN listpays error: {}", err)))?
             .into_inner();
 
-        let Some(payment) = response.pays.into_iter().last() else {
-            return Err(LightningError::NotFound("Payment not found".to_string()));
-        };
+        if let Some(payment) = response.pays.into_iter().last() {
+            return self.process_outgoing_payment(payment).await;
+        }
 
-        let state = match payment.status {
-            0 => PaymentState::Inflight, // pending
-            1 => PaymentState::Settled,  // complete
-            2 => PaymentState::Failed,   // failed
-            _ => PaymentState::Failed,
-        };
-
-        // Calculate amounts
-        let amount = payment
-            .amount_msat
-            .as_ref()
-            .map(|amt| amt.msat / 1000)
-            .unwrap_or(0);
-        let sent_amount = payment
-            .amount_sent_msat
-            .map(|amt| amt.msat / 1000)
-            .unwrap_or(0);
-        let routing_fee = sent_amount.checked_sub(amount);
-
-        // Get destination pubkey
-        let destination_pubkey = match &payment.destination {
-            Some(hex_str) => {
-                let hex_str = String::from_utf8(hex_str.clone()).map_err(|err| {
-                    LightningError::Parse(format!("Invalid destination string: {}", err))
-                })?;
-                let pubkey = PublicKey::from_str(&hex_str).map_err(|err| {
-                    LightningError::Parse(format!("Invalid destination pubkey: {}", err))
-                })?;
-                Some(pubkey)
-            }
-            None => None,
-        };
-
-        // Convert timestamps
-        let creation_time = payment
-            .created_at
-            .try_into()
-            .ok()
-            .map(|ts: u64| UNIX_EPOCH + Duration::from_secs(ts));
-
-        let network = self
-            .get_network()
+        // If it's not an outgoing payment, check if it's an incoming payment (invoice)
+        let invoice_response = client
+            .list_invoices(cln_grpc::pb::ListinvoicesRequest::default())
             .await
-            .map(|network| Some(network.to_string()))
-            .unwrap_or(None);
+            .map_err(|err| {
+                tracing::error!("list_invoices RPC failed: {}", err);
+                LightningError::RpcError(format!("CLN list_invoices error: {}", err))
+            })?
+            .into_inner();
 
-        let amount_sat: u64 = payment
-            .amount_msat
-            .as_ref()
-            .map(|amt| amt.msat / 1000)
-            .unwrap_or(0);
+        if let Some(invoice) = invoice_response
+            .invoices
+            .into_iter()
+            .find(|invoice| hex::encode(&invoice.payment_hash) == hex_hash)
+        {
+            return self.process_incoming_payment(invoice).await;
+        }
 
-        let amount_usd = self.price_converter.sats_to_usd(amount_sat).await?;
-
-        Ok(PaymentDetails {
-            state,
-            amount_sat,
-            amount_usd,
-            routing_fee,
-            network,
-            description: payment.description,
-            creation_time,
-            invoice: payment.bolt11,
-            payment_hash: hex::encode(&payment.payment_hash),
-            destination_pubkey,
-            completed_at: payment.completed_at,
-            htlcs: vec![],
-        })
+        Err(LightningError::NotFound(format!(
+            "Payment {} not found",
+            hex_hash
+        )))
     }
 
     async fn list_payments(&self) -> Result<Vec<PaymentSummary>, LightningError> {
         let mut client = self.get_client_stub().await;
-        let response = client
+        let btc_price = self.price_converter.fetch_btc_price().await?;
+
+        // Fetch outgoing payments
+        let pays_response = client
             .list_pays(cln_grpc::pb::ListpaysRequest::default())
             .await
             .map_err(|err| LightningError::RpcError(err.to_string()))?
             .into_inner();
 
-        let btc_price = self.price_converter.fetch_btc_price().await?;
+        // Fetch incoming invoices
+        let invoices_response = client
+            .list_invoices(cln_grpc::pb::ListinvoicesRequest::default())
+            .await
+            .map_err(|err| LightningError::RpcError(err.to_string()))?
+            .into_inner();
 
-        let summaries = response
+        // Process outgoing payments
+        let outgoing_payments: Vec<PaymentSummary> = pays_response
             .pays
             .into_iter()
             .filter_map(|payment| {
@@ -1549,7 +1924,6 @@ impl LightningClient for ClnNode {
                     .map(|msat| (msat.msat / 1000).try_into().unwrap_or(0))
                     .unwrap_or(0);
 
-                // Convert sats → USD using pre-fetched price
                 let amount_usd = PriceConverter::sats_to_usd_with_price(amount_sat, btc_price);
 
                 let routing_fee = match (
@@ -1557,34 +1931,94 @@ impl LightningClient for ClnNode {
                     payment.amount_msat.as_ref(),
                 ) {
                     (Some(sent), Some(received)) => {
-                        Some(((sent.msat - received.msat) / 1000).try_into().unwrap())
+                        Some(((sent.msat - received.msat) / 1000).try_into().unwrap_or(0))
                     }
                     _ => None,
                 };
 
-                let creation_time = payment
-                    .created_at
-                    .try_into()
-                    .ok()
-                    .map(|timestamp: u64| UNIX_EPOCH + Duration::from_secs(timestamp));
+                let creation_time = (payment.created_at > 0).then_some(payment.created_at as u64);
 
                 Some(PaymentSummary {
                     state,
+                    payment_type: PaymentType::Outgoing,
                     amount_sat,
                     amount_usd,
                     routing_fee,
                     creation_time,
                     invoice: payment.bolt11,
                     payment_hash: hex::encode(&payment.payment_hash),
-                    completed_at: payment
-                        .completed_at
-                        .map(|timestamp| timestamp.try_into().ok())
-                        .flatten(),
+                    completed_at: payment.completed_at,
                 })
             })
             .collect();
 
-        Ok(summaries)
+        // Process incoming payments (from invoices)
+        let incoming_payments: Vec<PaymentSummary> = invoices_response
+            .invoices
+            .into_iter()
+            .filter(|invoice| {
+                // Only include invoices with payment attempts
+                invoice.pay_index.is_some()
+            })
+            .filter_map(|invoice| {
+                let state = match invoice.status {
+                    0 => PaymentState::Inflight, // unpaid
+                    1 => PaymentState::Settled,  // paid
+                    2 => PaymentState::Failed,   // expired
+                    _ => return None,
+                };
+
+                // Use amount_received_msat if available (actual payment), fallback to amount_msat (invoice amount)
+                let amount_sat = invoice
+                    .amount_received_msat
+                    .as_ref()
+                    .or(invoice.amount_msat.as_ref())
+                    .map(|amt| (amt.msat / 1000).try_into().unwrap_or(0))
+                    .unwrap_or(0);
+
+                let amount_usd = PriceConverter::sats_to_usd_with_price(amount_sat, btc_price);
+
+                let creation_time = (invoice.expires_at > 0).then_some(invoice.expires_at);
+
+                let completed_at = match state {
+                    PaymentState::Settled | PaymentState::Failed => {
+                        invoice.paid_at.filter(|&paid_at| paid_at > 0)
+                    }
+                    _ => None,
+                };
+
+                Some(PaymentSummary {
+                    state,
+                    payment_type: PaymentType::Incoming,
+                    amount_sat,
+                    amount_usd,
+                    routing_fee: None,
+                    creation_time,
+                    invoice: invoice.bolt11,
+                    payment_hash: hex::encode(&invoice.payment_hash),
+                    completed_at,
+                })
+            })
+            .collect();
+
+        // Combine all with deduplication
+        let mut seen_hashes = HashSet::new();
+        let mut all_payments = Vec::new();
+
+        let mut push_unique = |payment: PaymentSummary| {
+            if seen_hashes.insert(payment.payment_hash.clone()) {
+                all_payments.push(payment);
+            }
+        };
+
+        outgoing_payments.into_iter().for_each(&mut push_unique);
+        incoming_payments.into_iter().for_each(&mut push_unique);
+
+        // Sort by creation time
+        all_payments
+            .sort_by(|outgoing, incoming| incoming.creation_time.cmp(&outgoing.creation_time));
+
+        Ok(all_payments)
     }
 
     async fn stream_events(
