@@ -65,7 +65,7 @@ export default function ChannelDetailsPage({
 
         console.log(json); // debug
 
-        const channel = json.data; // The actual channel details object
+        const channel = json.data; 
 
         setChannelData({
           channelId: channel.channel_id,
