@@ -75,7 +75,7 @@ export default function EventsPage() {
     }
     return pages;
   };
-
+  
   const fetchNotifications = async () => {
     if (status === "unauthenticated") {
       router.push("/login");

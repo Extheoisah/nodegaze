@@ -1,6 +1,6 @@
 "use client";
 
-import type * as React from "react";
+import React, { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 
 import {
@@ -34,54 +34,62 @@ interface NavigationSection {
   items: NavigationItem[];
 }
 
-const navigationItems: NavigationSection[] = [
-  {
-    title: "Dashboard",
-    items: [
-      {
-        title: "Overview",
-        url: "/overview",
-        icon: Eye,
-      },
-      {
-        title: "Channels",
-        url: "/channels",
-        icon: Socket,
-        count: 10,
-      },
-      {
-        title: "All Nodes",
-        url: "/nodes",
-        icon: Graph,
-        count: 10,
-      },
-      {
-        title: "Events",
-        url: "/events",
-        icon: Network,
-        count: 10,
-      },
-    ],
-  },
-  {
-    title: "Transactions",
-    items: [
-      {
-        title: "Payment",
-        url: "/payments",
-        icon: Note,
-      },
-      {
-        title: "Invoices",
-        url: "/invoices",
-        icon: Binoculars,
-      },
-    ],
-  },
-];
-
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname();
+  const [channelCount, setChannelCount] = useState(0);
+
+  useEffect(() => {
+    const fetchChannelCount = async () => {
+      try {
+        const res = await fetch("/api/channels?page=1&per_page=10");
+        const result = await res.json();
+        setChannelCount(result?.data?.items?.length || 0);
+      } catch {
+        setChannelCount(0);
+      }
+    };
+    fetchChannelCount();
+  }, []);
+
+  const navigationItems: NavigationSection[] = [
+    {
+      title: "Dashboard",
+      items: [
+        { title: "Overview", 
+          url: "/overview", 
+          icon: Eye, 
+        },
+        {
+          title: "Channels",
+          url: "/channels",
+          icon: Socket,
+          count: channelCount,
+        },
+        { title: "All Nodes", 
+          url: "/nodes", 
+          icon: Graph, 
+          count: 10 },
+        { title: "Events", 
+          url: "/events", 
+          icon: Network, 
+          count: 10,
+        },
+      ],
+    },
+    {
+      title: "Transactions",
+      items: [
+        { title: "Payment", 
+          url: "/payments", 
+          icon: Note, 
+        },
+        { title: "Invoices", 
+          url: "/invoices", 
+          icon: Binoculars, 
+        },
+      ],
+    },
+  ];
 
   return (
     <Sidebar {...props}>
@@ -108,8 +116,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       <SidebarMenuButton
                         asChild
                         isActive={isActive}
-                        className={`text-sm h-11 font-medium font-clash-grotesk`}
-                        // disable the button if the url is /payments, /invoices, /nodes, /channels, /events
+                        className="text-sm h-11 font-medium font-clash-grotesk"
                         disabled={
                           item.url === "/payments" || item.url === "/invoices"
                         }
@@ -117,9 +124,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                         <a
                           href={item.url}
                           className={`flex items-center justify-between ${
-                            item.url === "/payments" ||
-                            item.url === "/invoices" ||
-                            item.url === "/nodes"
+                            ["/payments", "/invoices", "/nodes"].includes(
+                              item.url
+                            )
                               ? "opacity-50 cursor-not-allowed"
                               : ""
                           }`}
@@ -128,10 +135,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                             <item.icon className="h-4 w-4" />
                             <span>{item.title}</span>
                           </div>
-                          {item.count && (
-                            <span
-                              className={`bg-grey-sub-background rounded-xl px-2 py-1 text-xs font-clash-grotesk font-medium text-grey-primary`}
-                            >
+                          {item.count !== undefined && (
+                            <span className="bg-grey-sub-background rounded-xl px-2 py-1 text-xs font-clash-grotesk font-medium text-grey-primary">
                               {item.count}
                             </span>
                           )}
