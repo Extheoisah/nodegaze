@@ -135,33 +135,33 @@ export const columns: ColumnDef<Channel>[] = [
             return "text-gray-600";
         }
       };
-      const getProgressPercentage = (uptime: string) => {
-        switch (uptime) {
-          case "Very Good":
-            return 90;
-          case "Good":
-            return 70;
-          case "Poor":
-            return 30;
-          default:
-            return 0;
-        }
-      };
+      // const getProgressPercentage = (uptime: string) => {
+      //   switch (uptime) {
+      //     case "Very Good":
+      //       return 90;
+      //     case "Good":
+      //       return 70;
+      //     case "Poor":
+      //       return 30;
+      //     default:
+      //       return 0;
+      //   }
+      // };
 
-      const getStrokeColor = (uptime: string) => {
-        switch (uptime) {
-          case "Very Good":
-            return "#33CE6D";
-          case "Good":
-            return "#EAB308";
-          case "Poor":
-            return "#EF4444";
-          default:
-            return "#D1D5DB";
-        }
-      };
+      // const getStrokeColor = (uptime: string) => {
+      //   switch (uptime) {
+      //     case "Very Good":
+      //       return "#33CE6D";
+      //     case "Good":
+      //       return "#EAB308";
+      //     case "Poor":
+      //       return "#EF4444";
+      //     default:
+      //       return "#D1D5DB";
+      //   }
+      // };
 
-      const percentage = getProgressPercentage(uptime);
+      // const percentage = getProgressPercentage(uptime);
       //   const circumference = 2 * Math.PI * 16; // radius = 16
       //   const strokeDasharray = circumference;
       //   const strokeDashoffset = circumference - (percentage / 100) * circumference;
@@ -172,8 +172,8 @@ export const columns: ColumnDef<Channel>[] = [
             {uptime}
           </span>
           <div className="relative w-8 h-8">
-            <svg className="w-8 h-8 transform -rotate-90" viewBox="0 0 36 36">
-              {/* Background circle */}
+            {/* <svg className="w-8 h-8 transform -rotate-90" viewBox="0 0 36 36">
+              Background circle
               <path
                 d="M18 2.0845
                   a 15.9155 15.9155 0 0 1 0 31.831
@@ -182,7 +182,7 @@ export const columns: ColumnDef<Channel>[] = [
                 stroke="#E5E7EB"
                 strokeWidth="3"
               />
-              {/* Progress circle */}
+              Progress circle
               <path
                 d="M18 2.0845
                   a 15.9155 15.9155 0 0 1 0 31.831
@@ -190,10 +190,10 @@ export const columns: ColumnDef<Channel>[] = [
                 fill="none"
                 strokeWidth="3"
                 stroke={getStrokeColor(uptime)}
-                strokeDasharray={`${percentage}, 100`}
+                strokeDasharray={`${getProgressPercentage}, 100`}
                 strokeLinecap="round"
               />
-            </svg>
+            </svg> */}
           </div>
         </div>
       );
