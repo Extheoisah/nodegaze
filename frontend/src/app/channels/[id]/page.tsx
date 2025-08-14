@@ -1,5 +1,5 @@
 "use client";
-// import { use } from "react";
+import { use } from "react";
 import { useEffect } from "react";
 import React from "react";
 
@@ -51,7 +51,7 @@ interface ChannelData {
 export default function ChannelDetailsPage({
   params,
 }: ChannelDetailsPageProps) {
-  const { id } = React.use(params); 
+  const { id } = React.use(params); // unwraps the Promise
 
   const [channelData, setChannelData] = React.useState<ChannelData | null>(
     null
@@ -65,13 +65,13 @@ export default function ChannelDetailsPage({
 
         console.log(json); // debug
 
-        const channel = json.data; 
-        
+        const channel = json.data; // The actual channel details object
+
         setChannelData({
           channelId: channel.channel_id,
           inboundBalance: channel.remote_balance_sat,
           outboundBalance: channel.local_balance_sat,
-          channelAge: `${Math.floor(channel.channel_age_blocks / 3600)} days`, 
+          channelAge: `${Math.floor(channel.channel_age_blocks / 144)} days`, // you could convert blocks to days if needed
           lastUpdated: new Date(json.timestamp).toLocaleString(),
 
           capacity: channel.capacity_sat,
@@ -81,25 +81,25 @@ export default function ChannelDetailsPage({
             {
               peer: "Node 1",
               publicKey: channel.node1_policy.pubkey,
-              feeRate: `${channel.node1_policy.fee_rate_milli_msat} ppm`,
-              baseFee: `${channel.node1_policy.fee_base_msat / 1000} sats`,
-              maxHTLC: `${channel.node1_policy.max_htlc_msat / 1000} sats`,
-              minHTLC: `${channel.node1_policy.min_htlc_msat / 1000} sats`,
+              feeRate: `${channel.node1_policy.fee_rate_milli_msat}ppm`,
+              baseFee: `${channel.node1_policy.fee_base_msat / 1000}sats`,
+              maxHTLC: `${channel.node1_policy.max_htlc_msat / 1000}sats`,
+              minHTLC: `${channel.node1_policy.min_htlc_msat / 1000}sats`,
               timelockDelta: `${
                 channel.node1_policy.time_lock_delta ?? 0
-              } blocks`,
+              }blocks`,
               disabled: channel.node1_policy.disabled ? "Yes" : "No",
             },
             {
               peer: "Node 2",
               publicKey: channel.node2_policy.pubkey,
-              feeRate: `${channel.node2_policy.fee_rate_milli_msat} ppm`,
-              baseFee: `${channel.node2_policy.fee_base_msat / 1000} sats`,
-              maxHTLC: `${channel.node2_policy.max_htlc_msat / 1000} sats`,
-              minHTLC: `${channel.node2_policy.min_htlc_msat / 1000} sats`,
+              feeRate: `${channel.node2_policy.fee_rate_milli_msat}ppm`,
+              baseFee: `${channel.node2_policy.fee_base_msat / 1000}sats`,
+              maxHTLC: `${channel.node2_policy.max_htlc_msat / 1000}sats`,
+              minHTLC: `${channel.node2_policy.min_htlc_msat / 1000}sats`,
               timelockDelta: `${
                 channel.node2_policy.time_lock_delta ?? 0
-              } blocks`,
+              }blocks`,
               disabled: channel.node2_policy.disabled ? "Yes" : "No",
             },
           ],
@@ -111,14 +111,14 @@ export default function ChannelDetailsPage({
 
     fetchChannelData();
   }, [id]);
-  
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
   };
 
-  // if (!channelData) {
-  //   return <div>Loading...</div>;
-  // }
+  if (!channelData) {
+    return <div>Loading...</div>;
+  }
 
   return (
     <AppLayout>
