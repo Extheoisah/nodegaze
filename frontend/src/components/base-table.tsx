@@ -242,22 +242,27 @@ export function DataTable() {
       const res = await fetch("/api/channels?page=1&per_page=10");
       const result = await res.json();
       console.log("Full API response:", result);
+      console.log(res);
 
-      if (!res.ok) throw new Error(result.error || "Failed to fetch channels");
+      if (!res.ok) {
+        const errorMessage =
+          typeof result.error === "string"
+            ? result.error
+            : result.error?.message ||
+              JSON.stringify(result.error) ||
+              "Failed to fetch channels";
+        throw new Error(errorMessage);
+      }
 
       const apiItems = (result?.data?.items ?? []) as ApiChannel[];
 
+      if (apiItems.length === 0) {
+        setChannels([]);
+        setError("No channels available...");
+        return;
+      }
+
       const transformed: Channel[] = apiItems.map((item) => {
-        // calculate uptime percentage assuming uptime is seconds in a 24h window
-        // const uptimeSeconds = typeof item.uptime === "number" ? item.uptime : 0;
-        // const uptimePercentage = (uptimeSeconds / 86400) * 100; // adjust denominator if you use different window
-
-        // let uptimeCategory: Channel["uptime"];
-        // if (uptimePercentage >= 90) uptimeCategory = "Very Good";
-        // else if (uptimePercentage >= 70) uptimeCategory = "Good";
-        // else uptimeCategory = "Poor";
-
-        // Normalise state to one of the allowed values (fallback to "unknown")
         const rawState = (item.channel_state ?? "").toString().toLowerCase();
         const state: Channel["state"] =
           rawState === "active" ||
@@ -268,7 +273,10 @@ export function DataTable() {
 
         return {
           id: item.chan_id,
-          channel_name: String(item.chan_id),
+          channel_name:
+            item.alias && item.alias.trim() !== ""
+              ? item.alias
+              : String(item.chan_id),
           state,
           inbound_balance: Number(item.remote_balance ?? 0),
           outbound_balance: Number(item.local_balance ?? 0),
@@ -283,7 +291,7 @@ export function DataTable() {
       setChannels(transformed);
     } catch (err) {
       console.error("Error fetching channels:", err);
-      setError(err instanceof Error ? "Something went wrong" : "");
+      setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setIsLoading(false);
     }
@@ -353,7 +361,7 @@ export function DataTable() {
               <TableRow>
                 <TableCell
                   colSpan={columns.length}
-                  className="py-6 text-center text-red-500"
+                  className="py-6 text-center text-grey-accent"
                 >
                   {error}
                 </TableCell>
