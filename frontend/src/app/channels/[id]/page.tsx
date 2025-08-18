@@ -66,12 +66,12 @@ export default function ChannelDetailsPage({
         console.log(json); // debug
 
         const channel = json.data; 
-
+        
         setChannelData({
           channelId: channel.channel_id,
           inboundBalance: channel.remote_balance_sat,
           outboundBalance: channel.local_balance_sat,
-          channelAge: `${Math.floor(channel.channel_age_blocks / 144)} days`, // you could convert blocks to days if needed
+          channelAge: `${Math.floor(channel.channel_age_blocks / 3600)} days`, 
           lastUpdated: new Date(json.timestamp).toLocaleString(),
 
           capacity: channel.capacity_sat,
@@ -81,25 +81,25 @@ export default function ChannelDetailsPage({
             {
               peer: "Node 1",
               publicKey: channel.node1_policy.pubkey,
-              feeRate: `${channel.node1_policy.fee_rate_milli_msat}ppm`,
-              baseFee: `${channel.node1_policy.fee_base_msat / 1000}sats`,
-              maxHTLC: `${channel.node1_policy.max_htlc_msat / 1000}sats`,
-              minHTLC: `${channel.node1_policy.min_htlc_msat / 1000}sats`,
+              feeRate: `${channel.node1_policy.fee_rate_milli_msat} ppm`,
+              baseFee: `${channel.node1_policy.fee_base_msat / 1000} sats`,
+              maxHTLC: `${channel.node1_policy.max_htlc_msat / 1000} sats`,
+              minHTLC: `${channel.node1_policy.min_htlc_msat / 1000} sats`,
               timelockDelta: `${
                 channel.node1_policy.time_lock_delta ?? 0
-              }blocks`,
+              } blocks`,
               disabled: channel.node1_policy.disabled ? "Yes" : "No",
             },
             {
               peer: "Node 2",
               publicKey: channel.node2_policy.pubkey,
-              feeRate: `${channel.node2_policy.fee_rate_milli_msat}ppm`,
-              baseFee: `${channel.node2_policy.fee_base_msat / 1000}sats`,
-              maxHTLC: `${channel.node2_policy.max_htlc_msat / 1000}sats`,
-              minHTLC: `${channel.node2_policy.min_htlc_msat / 1000}sats`,
+              feeRate: `${channel.node2_policy.fee_rate_milli_msat} ppm`,
+              baseFee: `${channel.node2_policy.fee_base_msat / 1000} sats`,
+              maxHTLC: `${channel.node2_policy.max_htlc_msat / 1000} sats`,
+              minHTLC: `${channel.node2_policy.min_htlc_msat / 1000} sats`,
               timelockDelta: `${
                 channel.node2_policy.time_lock_delta ?? 0
-              }blocks`,
+              } blocks`,
               disabled: channel.node2_policy.disabled ? "Yes" : "No",
             },
           ],
@@ -238,8 +238,7 @@ export default function ChannelDetailsPage({
             <div>
               <div className="text-sm text-grey-accent mb-1">Capacity</div>
               <div className="text-base font-medium text-maya-blue">
-                {new Intl.NumberFormat("en-US").format(channelData.capacity)}
-                sats
+                {new Intl.NumberFormat("en-US").format(channelData.capacity)} sats
               </div>
             </div>
           </div>
@@ -274,8 +273,7 @@ export default function ChannelDetailsPage({
             <div>
               <div className="text-sm text-grey-accent mb-1">Opening Cost</div>
               <div className="text-base font-medium text-maya-blue">
-                {new Intl.NumberFormat("en-US").format(channelData.openingCost)}
-                sats
+                {new Intl.NumberFormat("en-US").format(channelData.openingCost)} sats
               </div>
             </div>
           </div>
