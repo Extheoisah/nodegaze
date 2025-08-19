@@ -1,5 +1,5 @@
 "use client";
-import { use } from "react";
+// import { use } from "react";
 import { useEffect } from "react";
 import React from "react";
 
@@ -51,7 +51,7 @@ interface ChannelData {
 export default function ChannelDetailsPage({
   params,
 }: ChannelDetailsPageProps) {
-  const { id } = React.use(params); // unwraps the Promise
+  const { id } = React.use(params); 
 
   const [channelData, setChannelData] = React.useState<ChannelData | null>(
     null
@@ -111,14 +111,14 @@ export default function ChannelDetailsPage({
 
     fetchChannelData();
   }, [id]);
-
+  
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
   };
 
-  if (!channelData) {
-    return <div>Loading...</div>;
-  }
+  // if (!channelData) {
+  //   return <div>Loading...</div>;
+  // }
 
   return (
     <AppLayout>
@@ -242,7 +242,8 @@ export default function ChannelDetailsPage({
             <div>
               <div className="text-sm text-grey-accent mb-1">Capacity</div>
               <div className="text-base font-medium text-maya-blue">
-                {new Intl.NumberFormat("en-US").format(channelData.capacity)} sats
+                {channelData
+                  ? new Intl.NumberFormat("en-US").format(channelData.capacity) : "..."} sats
               </div>
             </div>
           </div>
@@ -278,7 +279,7 @@ export default function ChannelDetailsPage({
             <div>
               <div className="text-sm text-grey-accent mb-1">Opening Cost</div>
               <div className="text-base font-medium text-maya-blue">
-                {new Intl.NumberFormat("en-US").format(channelData.openingCost)} sats
+                {channelData ? new Intl.NumberFormat("en-US").format(channelData.openingCost) : "..."} sats
               </div>
             </div>
           </div>

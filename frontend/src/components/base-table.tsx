@@ -235,14 +235,81 @@ export function DataTable() {
   const [columnVisibility, setColumnVisibility] =
     React.useState<VisibilityState>({});
 
-  const fetchChannels = async () => {
+  // const fetchChannels = async () => {
+  //   setIsLoading(true);
+  //   setError("");
+  //   try {
+  //     const res = await fetch("/api/channels?page=1&per_page=10");
+  //     const result = await res.json();
+  //     console.log("Full API response:", result);
+  //     console.log(res);
+
+  //     if (!res.ok) {
+  //       const errorMessage =
+  //         typeof result.error === "string"
+  //           ? result.error
+  //           : result.error?.message ||
+  //             JSON.stringify(result.error) ||
+  //             "Failed to fetch channels";
+  //       throw new Error(errorMessage);
+  //     }
+
+  //     const apiItems = (result?.data?.items ?? []) as ApiChannel[];
+
+  //     if (apiItems.length === 0) {
+  //       setChannels([]);
+  //       setError("No channels available...");
+  //       return;
+  //     }
+
+  //     const transformed: Channel[] = apiItems.map((item) => {
+  //       const rawState = (item.channel_state ?? "").toString().toLowerCase();
+  //       const state: Channel["state"] =
+  //         rawState === "active" ||
+  //         rawState === "inactive" ||
+  //         rawState === "pending"
+  //           ? (rawState as Channel["state"])
+  //           : "unknown";
+
+  //       return {
+  //         id: item.chan_id,
+  //         channel_name:
+  //           item.alias && item.alias.trim() !== ""
+  //             ? item.alias
+  //             : String(item.chan_id),
+  //         state,
+  //         inbound_balance: Number(item.remote_balance ?? 0),
+  //         outbound_balance: Number(item.local_balance ?? 0),
+  //         last_updated: new Date(
+  //           (item.last_update ?? 0) * 1000
+  //         ).toLocaleString(),
+  //         uptime: item.uptime,
+  //       };
+  //     });
+
+  //     console.log("Transformed data for table:", transformed);
+  //     setChannels(transformed);
+  //   } catch (err) {
+  //     console.error("Error fetching channels:", err);
+  //     setError(err instanceof Error ? err.message : "Something went wrong");
+  //   } finally {
+  //     setIsLoading(false);
+  //   }
+  // };
+
+  // React.useEffect(() => {
+  //   fetchChannels();
+  // }, []);
+
+  const [page, setPage] = React.useState(1);
+  const [totalPages, setTotalPages] = React.useState(1);
+
+  const fetchChannels = async (pageNum = 1) => {
     setIsLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/channels?page=1&per_page=10");
+      const res = await fetch(`/api/channels?page=${pageNum}&per_page=10`);
       const result = await res.json();
-      console.log("Full API response:", result);
-      console.log(res);
 
       if (!res.ok) {
         const errorMessage =
@@ -255,6 +322,7 @@ export function DataTable() {
       }
 
       const apiItems = (result?.data?.items ?? []) as ApiChannel[];
+      setTotalPages(result?.data?.total_pages || 1); // <-- update if your API returns total_pages
 
       if (apiItems.length === 0) {
         setChannels([]);
@@ -270,6 +338,14 @@ export function DataTable() {
           rawState === "pending"
             ? (rawState as Channel["state"])
             : "unknown";
+
+        // Uptime as string category for display
+        // const uptimeSeconds = typeof item.uptime === "number" ? item.uptime : 0;
+        // const uptimePercentage = (uptimeSeconds / 86400) * 100;
+        // let uptimeCategory: string;
+        // if (uptimePercentage >= 90) uptimeCategory = "Very Good";
+        // else if (uptimePercentage >= 70) uptimeCategory = "Good";
+        // else uptimeCategory = "Poor";
 
         return {
           id: item.chan_id,
@@ -287,10 +363,8 @@ export function DataTable() {
         };
       });
 
-      console.log("Transformed data for table:", transformed);
       setChannels(transformed);
     } catch (err) {
-      console.error("Error fetching channels:", err);
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setIsLoading(false);
@@ -298,8 +372,11 @@ export function DataTable() {
   };
 
   React.useEffect(() => {
-    fetchChannels();
-  }, []);
+    fetchChannels(page);
+  }, [page]);
+
+
+
 
   const table = useReactTable({
     data: channels,
@@ -399,16 +476,20 @@ export function DataTable() {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => table.previousPage()}
-          disabled={!table.getCanPreviousPage()}
+          // onClick={() => table.previousPage()}
+          // disabled={!table.getCanPreviousPage()}
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          disabled={page === 1}
         >
           Previous
         </Button>
         <Button
           variant="outline"
           size="sm"
-          onClick={() => table.nextPage()}
-          disabled={!table.getCanNextPage()}
+          // onClick={() => table.nextPage()}
+          // disabled={!table.getCanNextPage()}
+          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          disabled={page === totalPages}
         >
           Next
         </Button>
