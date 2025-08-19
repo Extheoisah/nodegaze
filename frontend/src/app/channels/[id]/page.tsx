@@ -1,5 +1,5 @@
 "use client";
-import { use } from "react";
+// import { use } from "react";
 import { useEffect } from "react";
 import React from "react";
 
@@ -51,7 +51,7 @@ interface ChannelData {
 export default function ChannelDetailsPage({
   params,
 }: ChannelDetailsPageProps) {
-  const { id } = React.use(params); // unwraps the Promise
+  const { id } = React.use(params); 
 
   const [channelData, setChannelData] = React.useState<ChannelData | null>(
     null
@@ -111,14 +111,14 @@ export default function ChannelDetailsPage({
 
     fetchChannelData();
   }, [id]);
-
+  
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
   };
 
-  if (!channelData) {
-    return <div>Loading...</div>;
-  }
+  // if (!channelData) {
+  //   return <div>Loading...</div>;
+  // }
 
   return (
     <AppLayout>
@@ -166,7 +166,9 @@ export default function ChannelDetailsPage({
             <span className="text-success-green text-sm">↑ 7.2%</span>
           </div>
           <div className="text-3xl font-medium text-grey-dark mb-4">
-            {new Intl.NumberFormat("en-US").format(channelData.inboundBalance)}{" "}
+            {channelData
+              ? new Intl.NumberFormat("en-US").format(channelData.inboundBalance)
+              : ""}{" "}
             sats
           </div>
           {/* Mini chart placeholder */}
@@ -197,7 +199,9 @@ export default function ChannelDetailsPage({
             <span className="text-red-500 text-sm">↓ 7.2%</span>
           </div>
           <div className="text-3xl font-medium text-grey-dark mb-4">
-            {new Intl.NumberFormat("en-US").format(channelData.outboundBalance)}{" "}
+            {channelData
+              ? new Intl.NumberFormat("en-US").format(channelData.outboundBalance)
+              : ""}{" "}
             sats
           </div>
           {/* Mini chart placeholder */}
@@ -226,19 +230,20 @@ export default function ChannelDetailsPage({
             <div>
               <div className="text-sm text-grey-accent mb-1">Channel ID</div>
               <div className="text-base font-medium text-maya-blue">
-                {channelData.channelId}
+                {channelData ? channelData.channelId : "..."}
               </div>
             </div>
             <div>
               <div className="text-sm text-grey-accent mb-1">Channel Age</div>
               <div className="text-base font-medium text-maya-blue">
-                {channelData.channelAge}
+                {channelData ? channelData.channelAge : "..."}
               </div>
             </div>
             <div>
               <div className="text-sm text-grey-accent mb-1">Capacity</div>
               <div className="text-base font-medium text-maya-blue">
-                {new Intl.NumberFormat("en-US").format(channelData.capacity)} sats
+                {channelData
+                  ? new Intl.NumberFormat("en-US").format(channelData.capacity) : "..."} sats
               </div>
             </div>
           </div>
@@ -250,13 +255,14 @@ export default function ChannelDetailsPage({
               </div>
               <div className="flex items-center gap-2">
                 <div className="font-medium text-maya-blue font-mono text-base truncate max-w-64">
-                  {channelData.commitmentTransactionId}
+                  {/* {channelData.commitmentTransactionId} */}
+                  {channelData ? channelData.commitmentTransactionId : "..."}
                 </div>
                 <Button
                   variant="link"
                   size="sm"
                   onClick={() =>
-                    copyToClipboard(channelData.commitmentTransactionId)
+                    copyToClipboard(channelData ? channelData.commitmentTransactionId : "...")
                   }
                   className="p-1 h-6 w-6"
                 >
@@ -267,13 +273,13 @@ export default function ChannelDetailsPage({
             <div>
               <div className="text-sm text-grey-accent mb-1">Last Updated</div>
               <div className="text-base font-medium text-maya-blue">
-                {channelData.lastUpdated}
+                {channelData ? channelData.lastUpdated : "..."}
               </div>
             </div>
             <div>
               <div className="text-sm text-grey-accent mb-1">Opening Cost</div>
               <div className="text-base font-medium text-maya-blue">
-                {new Intl.NumberFormat("en-US").format(channelData.openingCost)} sats
+                {channelData ? new Intl.NumberFormat("en-US").format(channelData.openingCost) : "..."} sats
               </div>
             </div>
           </div>
