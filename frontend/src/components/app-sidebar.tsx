@@ -127,7 +127,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                             ["/payments", "/invoices", "/nodes"].includes(
                               item.url
                             )
-                              ? "opacity-50 cursor-not-allowed"
+                              ? ""
                               : ""
                           }`}
                         >
