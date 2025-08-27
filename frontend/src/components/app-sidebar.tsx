@@ -51,6 +51,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     fetchChannelCount();
   }, []);
 
+
+
   const navigationItems: NavigationSection[] = [
     {
       title: "Dashboard",
