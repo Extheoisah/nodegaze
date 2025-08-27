@@ -235,74 +235,25 @@ export function DataTable() {
   const [columnVisibility, setColumnVisibility] =
     React.useState<VisibilityState>({});
 
-  // const fetchChannels = async () => {
-  //   setIsLoading(true);
-  //   setError("");
-  //   try {
-  //     const res = await fetch("/api/channels?page=1&per_page=10");
-  //     const result = await res.json();
-  //     console.log("Full API response:", result);
-  //     console.log(res);
-
-  //     if (!res.ok) {
-  //       const errorMessage =
-  //         typeof result.error === "string"
-  //           ? result.error
-  //           : result.error?.message ||
-  //             JSON.stringify(result.error) ||
-  //             "Failed to fetch channels";
-  //       throw new Error(errorMessage);
-  //     }
-
-  //     const apiItems = (result?.data?.items ?? []) as ApiChannel[];
-
-  //     if (apiItems.length === 0) {
-  //       setChannels([]);
-  //       setError("No channels available...");
-  //       return;
-  //     }
-
-  //     const transformed: Channel[] = apiItems.map((item) => {
-  //       const rawState = (item.channel_state ?? "").toString().toLowerCase();
-  //       const state: Channel["state"] =
-  //         rawState === "active" ||
-  //         rawState === "inactive" ||
-  //         rawState === "pending"
-  //           ? (rawState as Channel["state"])
-  //           : "unknown";
-
-  //       return {
-  //         id: item.chan_id,
-  //         channel_name:
-  //           item.alias && item.alias.trim() !== ""
-  //             ? item.alias
-  //             : String(item.chan_id),
-  //         state,
-  //         inbound_balance: Number(item.remote_balance ?? 0),
-  //         outbound_balance: Number(item.local_balance ?? 0),
-  //         last_updated: new Date(
-  //           (item.last_update ?? 0) * 1000
-  //         ).toLocaleString(),
-  //         uptime: item.uptime,
-  //       };
-  //     });
-
-  //     console.log("Transformed data for table:", transformed);
-  //     setChannels(transformed);
-  //   } catch (err) {
-  //     console.error("Error fetching channels:", err);
-  //     setError(err instanceof Error ? err.message : "Something went wrong");
-  //   } finally {
-  //     setIsLoading(false);
-  //   }
-  // };
-
-  // React.useEffect(() => {
-  //   fetchChannels();
-  // }, []);
+  
 
   const [page, setPage] = React.useState(1);
   const [totalPages, setTotalPages] = React.useState(1);
+    // const [alias, setAlias] = React.useState<string>(""); 
+
+  //   const fetchAlias = async () => {
+  //   try {
+  //     const res = await fetch(`/api/node/auth`);
+  //     const result = await res.json();
+  //     console.log("Alias:", result)
+  //     if (result?.success && result?.data?.node_info?.alias) {
+  //       setAlias(result.data.node_info.alias);
+  //     }
+  //   } catch (err) {
+  //     console.error("Failed to fetch alias:", err);
+  //   }
+  // };
+
 
   const fetchChannels = async (pageNum = 1) => {
     setIsLoading(true);
@@ -310,6 +261,7 @@ export function DataTable() {
     try {
       const res = await fetch(`/api/channels?page=${pageNum}&per_page=10`);
       const result = await res.json();
+      console.log("API RESPONSE:", result)
 
       if (!res.ok) {
         const errorMessage =
@@ -322,7 +274,7 @@ export function DataTable() {
       }
 
       const apiItems = (result?.data?.items ?? []) as ApiChannel[];
-      setTotalPages(result?.data?.total_pages || 1); // <-- update if your API returns total_pages
+      setTotalPages(result?.data?.total_pages || 1); 
 
       if (apiItems.length === 0) {
         setChannels([]);
@@ -363,6 +315,7 @@ export function DataTable() {
         };
       });
 
+
       setChannels(transformed);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -371,10 +324,13 @@ export function DataTable() {
     }
   };
 
+  // React.useEffect(() => {
+  //   fetchAlias(); // fetch alias once
+  // }, []);
+
   React.useEffect(() => {
     fetchChannels(page);
-  }, [page]);
-
+  }, [page]); 
 
 
 

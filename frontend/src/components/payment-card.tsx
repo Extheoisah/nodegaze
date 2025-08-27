@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
 import { StaticImageData } from "next/image"
 import  Image  from "next/image"
 
-interface MetricCardProps {
+interface PaymentCardProps {
   title: string
   value: string | number
   status?: string
@@ -19,7 +19,7 @@ interface MetricCardProps {
   icon?: StaticImageData
 }
 
-export function MetricCard({ title, value, status, statusColor = "green", trend, chart, icon }: MetricCardProps) {
+export function PaymentCard({ title, value, status, statusColor = "green", trend, chart, icon }: PaymentCardProps) {
   const statusColors = {
     green: "bg-green-100 text-green-800",
     yellow: "bg-yellow-100 text-yellow-800",
@@ -36,13 +36,7 @@ export function MetricCard({ title, value, status, statusColor = "green", trend,
         )}
           <span className="text-sm font-medium text-muted-foreground">{title}</span>
         </div>
-        {status && <Badge className={cn("w-fit text-xs", statusColors[statusColor])}>{status}</Badge>}
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-2">
-          <div className="text-2xl font-bold">{value}</div>
-
-          {trend && (
+        {trend && (
             <div className="flex items-center gap-1">
               {trend.direction === "up" ? (
                 <TrendingUp className="h-3 w-3 text-green-600" />
@@ -54,6 +48,11 @@ export function MetricCard({ title, value, status, statusColor = "green", trend,
               </span>
             </div>
           )}
+        {status && <Badge className={cn("w-fit text-xs", statusColors[statusColor])}>{status}</Badge>}
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2">
+          <div className="text-2xl font-bold">{value}</div>
 
           {chart && <div className="h-12 w-full">{chart}</div>}
         </div>
