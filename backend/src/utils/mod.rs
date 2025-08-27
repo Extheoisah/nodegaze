@@ -8,7 +8,7 @@ use bitcoin::secp256k1::PublicKey;
 use bitcoin:: Txid;
 use expanduser::expanduser;
 use lightning::ln::features::NodeFeatures;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Deserializer};
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::{Display, Formatter};
@@ -223,12 +223,13 @@ pub struct NodeMetrics {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PaymentDetails {
     pub state: PaymentState,
+    pub payment_type: PaymentType,
     pub amount_sat: u64,
     pub amount_usd: f64,
     pub routing_fee: Option<u64>,
     pub network: Option<String>,
     pub description: Option<String>,
-    pub creation_time: Option<SystemTime>,
+    pub creation_time: Option<u64>,
     pub invoice: Option<String>,
     pub payment_hash: String,
     pub destination_pubkey: Option<PublicKey>,
@@ -240,10 +241,11 @@ pub struct PaymentDetails {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PaymentSummary {
     pub state: PaymentState,
+    pub payment_type: PaymentType,
     pub amount_sat: u64,
     pub amount_usd: f64,
     pub routing_fee: Option<u64>,
-    pub creation_time: Option<SystemTime>,
+    pub creation_time: Option<u64>,
     pub invoice: Option<String>,
     pub payment_hash: String,
     pub completed_at: Option<u64>,
@@ -253,8 +255,8 @@ pub struct PaymentSummary {
 pub struct PaymentHtlc {
     pub routes: Vec<Route>,
     pub attempt_id: u64,
-    pub attempt_time: Option<SystemTime>,
-    pub resolve_time: Option<SystemTime>,
+    pub attempt_time: Option<u64>,
+    pub resolve_time: Option<u64>,
     pub failure_reason: Option<String>,
     pub failure_code: Option<u16>,
 }
@@ -294,7 +296,7 @@ pub struct Hop {
     pub expiry: Option<u64>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq, Copy)]
 pub enum PaymentState {
     Inflight,
     Failed,
@@ -302,7 +304,7 @@ pub enum PaymentState {
     Settled,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum PaymentType {
     Outgoing,
     Incoming,
@@ -484,6 +486,71 @@ impl PaymentState {
             PaymentState::Failed => "failed",
             PaymentState::Settled => "settled",
         }
+    }
+}
+
+impl FromStr for PaymentType {
+    type Err = String;
+    
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input.to_lowercase().as_str() {
+            "outgoing" => Ok(PaymentType::Outgoing),
+            "incoming" => Ok(PaymentType::Incoming),
+            "forwarded" => Ok(PaymentType::Forwarded),
+            _ => Err(format!("Invalid payment type: {}", input)),
+        }
+    }
+}
+
+impl Display for PaymentType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let payment_type = match self {
+            PaymentType::Outgoing => "outgoing",
+            PaymentType::Incoming => "incoming",
+            PaymentType::Forwarded => "forwarded",
+        };
+        write!(f, "{}", payment_type)
+    }
+}
+
+impl PaymentType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PaymentType::Outgoing => "outgoing",
+            PaymentType::Incoming => "incoming",
+            PaymentType::Forwarded => "forwarded",
+        }
+    }
+}
+
+pub fn deserialize_payment_types<'de, D>(deserializer: D) -> Result<Option<Vec<PaymentType>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+
+    let opt_string: Option<String> = Option::deserialize(deserializer)?;
+
+    match opt_string {
+        Some(s) if s.trim().is_empty() => Ok(None),
+        Some(s) => {
+            let payment_types = s
+                .split(',')
+                .map(|payment_type| payment_type.trim())
+                .filter(|payment_type| !payment_type.is_empty())
+                .map(|payment_type| {
+                    PaymentType::from_str(payment_type)
+                        .map_err(|err| Error::custom(format!("Invalid payment type '{}': {}", payment_type, err)))
+                })
+                .collect::<Result<Vec<PaymentType>, _>>()?;
+
+            if payment_types.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(payment_types))
+            }
+        }
+        None => Ok(None),
     }
 }
 

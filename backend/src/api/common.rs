@@ -171,7 +171,7 @@ where
     pub states: Option<Vec<T>>,
 }
 
-fn deserialize_states<'de, D, T>(deserializer: D) -> Result<Option<Vec<T>>, D::Error>
+pub fn deserialize_states<'de, D, T>(deserializer: D) -> Result<Option<Vec<T>>, D::Error>
 where
     D: Deserializer<'de>,
     T: DeserializeOwned + FromStr,
