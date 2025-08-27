@@ -12,6 +12,10 @@ use crate::repositories::notification_repository::NotificationRepository;
 use sqlx::SqlitePool;
 use uuid::Uuid;
 use validator::Validate;
+use reqwest::Client;
+use serde_json::json;
+use chrono::Utc;
+use std::time::Duration;
 
 pub struct NotificationService<'a> {
     /// Shared database connection pool
@@ -50,7 +54,7 @@ impl<'a> NotificationService<'a> {
         }
 
         // Validate URL based on notification type
-        self.validate_url(&create_request.url, &create_request.notification_type)?;
+        self.validate_url(&create_request.url, &create_request.notification_type).await?;
 
         let create_notification = CreateNotification {
             id: Uuid::now_v7().to_string(),
@@ -128,7 +132,7 @@ impl<'a> NotificationService<'a> {
 
         // Validate URL if provided
         if let Some(ref url) = update_request.url {
-            self.validate_url(url, &existing.notification_type)?;
+            self.validate_url(url, &existing.notification_type).await?;
         }
 
         let repo = NotificationRepository::new(self.pool);
@@ -202,7 +206,7 @@ impl<'a> NotificationService<'a> {
     }
 
     /// Validates URL based on notification type.
-    fn validate_url(
+    async fn validate_url(
         &self,
         url: &str,
         notification_type: &crate::database::models::NotificationType,
@@ -216,10 +220,42 @@ impl<'a> NotificationService<'a> {
                 }
             }
             crate::database::models::NotificationType::Webhook => {
-                // Basic URL validation is already done by the validator
-                // Additional webhook-specific validation can be added here
+                self.test_webhook_connection(url).await?;
             }
         }
+        Ok(())
+    }
+
+    async fn test_webhook_connection(&self, url: &str) -> ServiceResult<()> {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .map_err(|err| ServiceError::InternalError {
+                message: format!("HTTP client setup failed: {}", err),
+            })?;
+
+        let response = client
+            .post(url)
+            .json(&json!({
+                "event": "Ping",
+                "timestamp": Utc::now().to_rfc3339()
+            }))
+            .send()
+            .await
+            .map_err(|err| ServiceError::ExternalService {
+                message: match err {
+                    err if err.is_timeout() => "Webhook timeout after 5 seconds".into(),
+                    err if err.is_connect() => "Could not connect to webhook server".into(),
+                    _ => format!("Webhook communication failed: {}", err),
+                },
+            })?;
+
+        if !response.status().is_success() {
+            return Err(ServiceError::ExternalService {
+                message: format!("Webhook test failed with status {}", response.status()),
+            });
+        }
+
         Ok(())
     }
 }

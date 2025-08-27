@@ -9,6 +9,14 @@ import { ArrowLeftIcon } from "@/public/assets/icons/arrow-left";
 import { Copy, DatabaseIcon } from "lucide-react";
 import Link from "next/link";
 
+// interface ChannelDetailsPageProps {
+//   params: Promise<{
+//     id: string;
+//     channel_name: string;
+//     inbound_balance: number;
+//   }>;
+// }
+
 type ChannelDetailsPageProps = {
   params: Promise<{ id: string }>;
 };
