@@ -235,25 +235,8 @@ export function DataTable() {
   const [columnVisibility, setColumnVisibility] =
     React.useState<VisibilityState>({});
 
-  
-
   const [page, setPage] = React.useState(1);
   const [totalPages, setTotalPages] = React.useState(1);
-    // const [alias, setAlias] = React.useState<string>(""); 
-
-  //   const fetchAlias = async () => {
-  //   try {
-  //     const res = await fetch(`/api/node/auth`);
-  //     const result = await res.json();
-  //     console.log("Alias:", result)
-  //     if (result?.success && result?.data?.node_info?.alias) {
-  //       setAlias(result.data.node_info.alias);
-  //     }
-  //   } catch (err) {
-  //     console.error("Failed to fetch alias:", err);
-  //   }
-  // };
-
 
   const fetchChannels = async (pageNum = 1) => {
     setIsLoading(true);
@@ -289,8 +272,7 @@ export function DataTable() {
           rawState === "inactive" ||
           rawState === "pending"
             ? (rawState as Channel["state"])
-            : "unknown";
-
+            : "Disabled";
         // Uptime as string category for display
         // const uptimeSeconds = typeof item.uptime === "number" ? item.uptime : 0;
         // const uptimePercentage = (uptimeSeconds / 86400) * 100;
