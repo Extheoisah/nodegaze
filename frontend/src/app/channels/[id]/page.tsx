@@ -62,8 +62,7 @@ export default function ChannelDetailsPage({
       try {
         const res = await fetch(`/api/channels/${id}`);
         const json = await res.json();
-
-        console.log(json); // debug
+         console.log(json); // debug
 
         const channel = json.data; 
         

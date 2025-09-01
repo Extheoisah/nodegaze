@@ -7,7 +7,7 @@ import { Copy } from "lucide-react";
 import Link from "next/link";
 
 type PaymentDetailsPageProps = {
-  params: Promise<{ id: string }>;
+  params: Promise<{ hash: string }>;
 };
 
 
@@ -17,6 +17,8 @@ interface PaymentData {
   amount_sat?: number | string;
   amount_usd?: number | string;
   routing_fee?: number | string;
+  network?: string;
+  description?: string | null;
   creation_time?: {
     secs_since_epoch: number;
     nanos_since_epoch: number;
@@ -27,42 +29,54 @@ interface PaymentData {
   paymentId?: string;
   public?: string;
   date?: string;
+  expiry?: string | number;
+  public_channel?: string;
 }
 
 export default function PaymentDetailsPage({ params }: PaymentDetailsPageProps) {
-  const { id } = React.use(params);
+  const { hash } = React.use(params);
 
+  // console.log({hash})
+  
   const [paymentData, setPaymentData] = React.useState<PaymentData | null>(null);
 
   useEffect(() => {
-    async function fetchPaymentData() {
-      try {
-        const res = await fetch(`/api/payments/${id}`);
-        const json = await res.json();
-        console.log(json);
-        
-        const payment = json.data;
+  async function fetchPaymentData() {
+    try {
+      const res = await fetch(`/api/payments/${hash}`);
+      console.log("Fetch response:", res);
+      const json = await res.json();
+      console.log("API response:", json);
 
-        setPaymentData({
-          state: payment.state ?? "...",
-          type: payment.type ?? "...",
-          amount_sat: payment.amount_sat ?? "...",
-          amount_usd: payment.amount_usd ?? "...",
-          routing_fee: payment.routing_fee ?? "...",
-          creation_time: payment.creation_time ?? undefined,
-          invoice: payment.invoice ?? "...",
-          payment_hash: payment.payment_hash ?? "...",
-          completed_at: payment.completed_at ?? "...",
-          public: payment.public ?? "...",
-          date: payment.date ?? "...",
-        });
-      } catch (error) {
-        console.error("Failed to load payment data", error);
-      }
+      const payment = json.data;
+
+      setPaymentData({
+        state: payment.state ?? "...",
+        type: payment.type ?? "...",
+        amount_sat: payment.amount_sat ?? "...",
+        amount_usd: payment.amount_usd ?? "...",
+        routing_fee: payment.routing_fee ?? "...",
+        network: payment.network ?? "...",
+        description: payment.description ?? "...",
+        creation_time: payment.creation_time ?? undefined,
+        invoice: payment.invoice ?? "...",
+        payment_hash: payment.payment_hash ?? "...",
+        completed_at: payment.completed_at ?? "...",
+        public: payment.destination_pubkey ?? "...",
+        expiry: payment.htlcs?.[0]?.routes?.[0]?.hops?.[0]?.expiry ?? "...",
+        public_channel: payment.htlcs?.[0]?.routes?.[0]?.hops?.[0]?.chan_id ?? "...",
+        date: payment.creation_time?.secs_since_epoch
+          ? new Date(payment.creation_time.secs_since_epoch * 1000).toLocaleString()
+          : "...",
+      });
+    } catch (error) {
+      console.error("Failed to load payment data", error);
     }
+  }
 
-    fetchPaymentData();
-  }, [id]);
+  fetchPaymentData();
+}, [hash]);
+
 
   const copyToClipboard = (text?: string) => {
     if (!text || text === "...") return;
@@ -78,8 +92,9 @@ export default function PaymentDetailsPage({ params }: PaymentDetailsPageProps) 
         </span>
         <span className="text-grey-accent">&gt;</span>
         <span className="text-[#204ECF] font-medium">Payment Details</span>
-      </div>
 
+      </div>
+      
       {/* Back Button */}
       <div className="h-fit">
         <Link
@@ -131,13 +146,13 @@ export default function PaymentDetailsPage({ params }: PaymentDetailsPageProps) 
             <div>
               <div className="text-sm text-grey-accent mb-1">Network</div>
               <div className="text-base font-medium text-maya-blue">
-                {paymentData?.paymentId ?? "..."}
+                {paymentData?.network ?? "..."}
               </div>
             </div>
             <div>
               <div className="text-sm text-grey-accent mb-1">Description</div>
               <div className="text-base font-medium text-maya-blue">
-                {paymentData?.paymentId ?? "..."}
+                {paymentData?.description ?? "..."}
               </div>
             </div>
             <div>
@@ -184,7 +199,7 @@ export default function PaymentDetailsPage({ params }: PaymentDetailsPageProps) 
             <div>
               <div className="text-sm text-grey-accent mb-1">Expiry</div>
               <div className="text-base font-medium text-maya-blue">
-                expired since {paymentData?.date ?? "..."} minutes
+                expired since {paymentData?.expiry ?? "..."} minutes
               </div>
             </div>
             <div>
@@ -244,12 +259,12 @@ export default function PaymentDetailsPage({ params }: PaymentDetailsPageProps) 
               </div>
             </div>
           </div>
-
+          
           <div className="space-y-4">
             <div>
               <div className="text-sm text-grey-accent mb-1">Public Channels</div>
               <div className="text-base font-medium text-maya-blue">
-                121
+                {paymentData?.public_channel ?? "..."}
               </div>
             </div>
             <div>

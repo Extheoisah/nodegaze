@@ -44,6 +44,7 @@ export type Payment = {
   completed_at: number;
 };
 
+
 export function DataTable({
   payments,
   setPayments,
@@ -82,7 +83,7 @@ export function DataTable({
       console.error("Failed to copy:", err);
     }
   };
-
+  
   const columns: ColumnDef<Payment>[] = [
     {
       accessorKey: "state",
@@ -176,13 +177,13 @@ export function DataTable({
         const truncated = invoice.length > 16 ? `${invoice.slice(0, 14)}...` : invoice;
         return (
           <div className="flex items-center gap-1 relative">
-            <Link
-              href={`/payments/${invoice}`}
+            <div
+              // href={`/payments/${invoice}`}
               className="font-normal text-grey-dark hover:text-blue-primary hover:underline cursor-pointer truncate"
               title={invoice}
             >
               {truncated}
-            </Link>
+            </div>
             <Button
               variant="link"
               size="sm"
@@ -212,12 +213,13 @@ export function DataTable({
     },
     {
       id: "actions",
+      accessorKey: "payment_hash",
       header: "",
       enableHiding: false,
       cell: ({ row }) => {
-        const paymentHash = row.original.payment_hash;
+        const hash = row.original.payment_hash;
         return (
-          <Link href={`/payments/${paymentHash}`} className="cursor-pointer">
+          <Link href={`/payments/${hash}`} className="cursor-pointer">
             <Button
               variant="outline"
               className="h-8 w-8 p-0 text-grey-dark rounded-[8px] cursor-pointer"
