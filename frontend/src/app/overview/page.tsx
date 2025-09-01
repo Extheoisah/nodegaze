@@ -2,6 +2,7 @@ import { AppLayout } from "@/components/app-layout"
 import { PageHeader } from "@/components/page-header"
 import { MetricCard } from "@/components/metric-card"
 import { MiniChart } from "@/components/mini-chart"
+import node from "../../../public/node.svg"
 
 const metricsData = [
   {
@@ -10,6 +11,7 @@ const metricsData = [
     status: "Very Good",
     statusColor: "green" as const,
     chart: <MiniChart color="green" />,
+    icon: node,
   },
   {
     title: "Node Availability",
@@ -17,42 +19,49 @@ const metricsData = [
     status: "Good",
     statusColor: "yellow" as const,
     chart: <MiniChart color="yellow" />,
+     icon: node,
   },
   {
     title: "Channel Count",
     value: "5",
     trend: { value: "7.2%", direction: "down" as const },
     chart: <MiniChart color="red" />,
+     icon: node,
   },
   {
     title: "Node Liquidity",
     value: "100,000,000 sats",
     trend: { value: "7.2%", direction: "up" as const },
     chart: <MiniChart color="green" />,
+     icon: node,
   },
   {
     title: "Inbound Balance",
     value: "500,000,000 sats",
     trend: { value: "7.2%", direction: "up" as const },
     chart: <MiniChart color="green" />,
+     icon: node,
   },
   {
     title: "Outbound Balance",
     value: "150,000,000 sats",
     trend: { value: "7.2%", direction: "down" as const },
     chart: <MiniChart color="red" />,
+     icon: node,
   },
   {
     title: "Onchain balance",
     value: "100,000,000 sats",
     trend: { value: "7.2%", direction: "up" as const },
     chart: <MiniChart color="green" />,
+     icon: node,
   },
   {
     title: "Offchain balance",
     value: "100,000,000 sats",
     trend: { value: "7.2%", direction: "up" as const },
     chart: <MiniChart color="green" />,
+     icon: node,
   },
 ]
 
@@ -71,6 +80,7 @@ export default function Dashboard() {
             statusColor={metric.statusColor}
             trend={metric.trend}
             chart={metric.chart}
+            icon={metric.icon}
           />
         ))}
       </div>
