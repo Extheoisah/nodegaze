@@ -228,7 +228,7 @@ export default function PaymentDetailsPage({ params }: PaymentDetailsPageProps) 
         </div>
       </div>
 
-      {/* Connected Node Details */}
+      {/* Destination Node Data */}
       <div className="bg-white rounded-xl border p-6">
         <h2 className="text-base font-medium text-grey-dark mb-6">
           Destination Node Data
@@ -285,3 +285,4 @@ export default function PaymentDetailsPage({ params }: PaymentDetailsPageProps) 
     </AppLayout>
   );
 }
+
