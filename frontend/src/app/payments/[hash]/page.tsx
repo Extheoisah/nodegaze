@@ -18,6 +18,8 @@ interface PaymentData {
   amount_usd?: number | string;
   routing_fee?: number | string;
   network?: string;
+  alias?: string;
+  public_capacity?: string;
   description?: string | null;
   creation_time?: {
     secs_since_epoch: number;
@@ -31,6 +33,7 @@ interface PaymentData {
   date?: string;
   expiry?: string | number;
   public_channel?: string;
+  last_updated?: number | string;
 }
 
 export default function PaymentDetailsPage({ params }: PaymentDetailsPageProps) {
@@ -49,7 +52,7 @@ export default function PaymentDetailsPage({ params }: PaymentDetailsPageProps) 
       console.log("API response:", json);
 
       const payment = json.data;
-
+      
       setPaymentData({
         state: payment.state ?? "...",
         type: payment.type ?? "...",
@@ -63,11 +66,14 @@ export default function PaymentDetailsPage({ params }: PaymentDetailsPageProps) 
         payment_hash: payment.payment_hash ?? "...",
         completed_at: payment.completed_at ?? "...",
         public: payment.destination_pubkey ?? "...",
+        alias: payment.alias ?? "...",
+        public_capacity: payment.public_capacity ?? "...",
         expiry: payment.htlcs?.[0]?.routes?.[0]?.hops?.[0]?.expiry ?? "...",
         public_channel: payment.htlcs?.[0]?.routes?.[0]?.hops?.[0]?.chan_id ?? "...",
         date: payment.creation_time?.secs_since_epoch
           ? new Date(payment.creation_time.secs_since_epoch * 1000).toLocaleString()
           : "...",
+        last_updated: payment.last_updated ?? "...",
       });
     } catch (error) {
       console.error("Failed to load payment data", error);
@@ -233,13 +239,13 @@ export default function PaymentDetailsPage({ params }: PaymentDetailsPageProps) 
             <div>
               <div className="text-sm text-grey-accent mb-1">Alias</div>
               <div className="text-base font-medium text-maya-blue">
-                lnd2.blink.sv
+                {paymentData?.alias ?? "..."}
               </div>
             </div>
             <div>
               <div className="text-sm text-grey-accent mb-1">Public Capacity</div>
               <div className="text-base font-medium text-maya-blue">
-                28.53445899 btc
+                {paymentData?.public_capacity ?? "..."}
               </div>
             </div>
             <div>
@@ -270,7 +276,7 @@ export default function PaymentDetailsPage({ params }: PaymentDetailsPageProps) 
             <div>
               <div className="text-sm text-grey-accent mb-1">Last Update</div>
               <div className="text-base font-medium text-maya-blue">
-                170430 minutes ago
+                {paymentData?.last_updated ?? "..."} minutes ago
               </div>
             </div>
           </div>
