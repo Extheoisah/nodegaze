@@ -246,13 +246,13 @@ export function DataTable() {
       const result = await res.json();
 
       if (!res.ok) {
-        const errorMessage =
+        throw new Error(
           typeof result.error === "string"
             ? result.error
             : result.error?.message ||
               JSON.stringify(result.error) ||
-              "Failed to fetch channels";
-        throw new Error(errorMessage);
+              "No Channels Available..."
+        );
       }
 
       const apiItems = (result?.data?.items ?? []) as ApiChannel[];
@@ -373,7 +373,7 @@ export function DataTable() {
                   colSpan={columns.length}
                   className="py-6 text-center text-grey-accent"
                 >
-                  {error}
+                  {"No Channels Available..."}
                 </TableCell>
               </TableRow>
             ) : table.getRowModel().rows.length ? (
