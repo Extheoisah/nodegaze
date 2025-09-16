@@ -100,7 +100,6 @@ const [payments, setPayments] = React.useState<Payment[]>([]);
 
 {/* Payment selection buttons */}
 
-
        <div className="w-[70%] text-[15px] font-[500] flex gap-[15px] my-6">
         {paymentTypes.map((type) => (
           <button

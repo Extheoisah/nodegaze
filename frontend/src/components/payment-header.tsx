@@ -96,13 +96,13 @@ export function PaymentHeader() {
                  <Image src={CapacityIcon} alt="Capicity Icon"/>
                  </div>
                    <div className="space-y-2 mt-4">
-                   <select className="w-full rounded-lg border border-[#D4D4D4] bg-white px-2 py-4 text-sm outline-none">
+                   <select aria-label="Capacity" className="w-full rounded-lg border border-[#D4D4D4] bg-white px-2 py-4 text-sm outline-none">
                      <option>Is greater than or equal to</option>
                      <option>Is less than or equal to</option>
                      <option>Is exactly</option>
                    </select>
                    <input
-                     type="text"
+                     type="number"
                      placeholder="5,000"
                      className="w-full rounded-lg border border-[#D4D4D4] bg-white px-3 py-4 text-sm outline-none"
                    />
@@ -129,7 +129,6 @@ export function PaymentHeader() {
                       type="date"
                       className="w-full border rounded-lg px-[10px] py-2 "
                       placeholder="Select"
-                      
                     />
                     </label>
                   </div>
