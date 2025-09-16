@@ -13,7 +13,7 @@ type PaymentDetailsPageProps = {
 
 interface PaymentData {
   state?: string;
-  type?: string;
+  payment_type?: string;
   amount_sat?: number | string;
   amount_usd?: number | string;
   routing_fee?: number | string;
@@ -21,7 +21,7 @@ interface PaymentData {
   alias?: string;
   public_capacity?: string;
   description?: string | null;
-  creation_time?: {
+  creation_time?: number | {
     secs_since_epoch: number;
     nanos_since_epoch: number;
   };
@@ -55,13 +55,12 @@ export default function PaymentDetailsPage({ params }: PaymentDetailsPageProps) 
       
       setPaymentData({
         state: payment.state ?? "...",
-        type: payment.type ?? "...",
+        payment_type: payment.payment_type ?? "...",
         amount_sat: payment.amount_sat ?? "...",
         amount_usd: payment.amount_usd ?? "...",
         routing_fee: payment.routing_fee ?? "...",
         network: payment.network ?? "...",
-        description: payment.description ?? "...",
-        creation_time: payment.creation_time ?? undefined,
+        description: payment.description === "" ? "Null" : (payment.description ?? "Null"),
         invoice: payment.invoice ?? "...",
         payment_hash: payment.payment_hash ?? "...",
         completed_at: payment.completed_at ?? "...",
@@ -70,8 +69,12 @@ export default function PaymentDetailsPage({ params }: PaymentDetailsPageProps) 
         public_capacity: payment.public_capacity ?? "...",
         expiry: payment.htlcs?.[0]?.routes?.[0]?.hops?.[0]?.expiry ?? "...",
         public_channel: payment.htlcs?.[0]?.routes?.[0]?.hops?.[0]?.chan_id ?? "...",
-        date: payment.creation_time?.secs_since_epoch
-          ? new Date(payment.creation_time.secs_since_epoch * 1000).toLocaleString()
+        date: (typeof payment.creation_time === "number"
+          ? payment.creation_time
+          : payment.creation_time?.secs_since_epoch)
+          ? new Date(((typeof payment.creation_time === "number"
+              ? payment.creation_time
+              : payment.creation_time?.secs_since_epoch) as number) * 1000).toLocaleDateString()
           : "...",
         last_updated: payment.last_updated ?? "...",
       });
@@ -164,9 +167,7 @@ export default function PaymentDetailsPage({ params }: PaymentDetailsPageProps) 
             <div>
               <div className="text-sm text-grey-accent mb-1">Date</div>
               <div className="text-base font-medium text-maya-blue">
-                {paymentData?.creation_time?.secs_since_epoch
-                  ? new Date(paymentData.creation_time.secs_since_epoch * 1000).toLocaleDateString()
-                  : "..."}
+                {paymentData?.date ?? "..."}
               </div>
             </div>
           </div>
@@ -175,7 +176,7 @@ export default function PaymentDetailsPage({ params }: PaymentDetailsPageProps) 
             <div>
               <div className="text-sm text-grey-accent mb-1">Type</div>
               <div className="text-base font-medium text-maya-blue">
-                {paymentData?.type ?? "..."}
+                {paymentData?.payment_type ?? "..."}
               </div>
             </div>
             <div>

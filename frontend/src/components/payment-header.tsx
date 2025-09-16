@@ -17,17 +17,46 @@ import Close from "../../public/close.svg"
 import Add from "../../public/add.svg"
 import CapacityIcon from "../../public/capacity-icon.svg"
 
-export function PaymentHeader() {
+export type HeaderFilters = {
+  paymentType?: "all" | "incoming" | "outgoing";
+  operator?: "gte" | "lte" | "eq";
+  value?: number;
+  from?: string;
+  to?: string;
+};
+
+export function PaymentHeader({ onApplyFilters }: { onApplyFilters?: (filters: HeaderFilters) => void }) {
   const pathname = usePathname();
   const last = pathname.split("/").pop() ?? "";
   const pageTitle = last ? last.charAt(0).toUpperCase() + last.slice(1) : "";
 
   const [unit, setUnit] = useState<string>("sats");
   const [showFilter, setShowFilter] = useState(false);
+  const [isCapacityOpen, setIsCapacityOpen] = useState(false);
+  const [isDateOpen, setIsDateOpen] = useState(false);
+  const [isStateOpen, setIsStateOpen] = useState(false);
+
+  // Local filter states
+  const [capacityOperator, setCapacityOperator] = useState<"gte" | "lte" | "eq" | "">("");
+  const [capacityValue, setCapacityValue] = useState<string>("");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
+  const [paymentType, setPaymentType] = useState<"all" | "incoming" | "outgoing" | "">("");
 
   if (!pageTitle) return null;
 
   const units = ["sats", "BTC", "USD"] as const;
+
+  const handleApply = () => {
+    const filters: HeaderFilters = {};
+    if (paymentType) filters.paymentType = paymentType;
+    if (capacityOperator) filters.operator = capacityOperator;
+    if (capacityValue) filters.value = Number(capacityValue);
+    if (dateFrom) filters.from = dateFrom;
+    if (dateTo) filters.to = dateTo;
+    onApplyFilters?.(filters);
+    setShowFilter(false);
+  };
 
   return (
     <div className="flex items-center justify-between mb-2 mt-4 font-clash-grotesk text-grey-dark">
@@ -84,55 +113,98 @@ export function PaymentHeader() {
                     <Image src={Add} alt="Add"/>
                   <span className="text-sm font-medium">Add Filter</span>
                 </button>
-                <Button className="h-9 rounded-full bg-[#204ECF] text-[#F1F9FF] px-4">
+                <Button className="h-9 rounded-full bg-[#204ECF] text-[#F1F9FF] px-4" onClick={handleApply}>
                   Apply Filter
                  </Button>
 
                  </div>
 
                 <div className="mb-6">
-                  <div className="bg-[#EFF6FF] rounded-[20px] flex justify-between px-[20px] py-[15px]">
+                  <button
+                    type="button"
+                    onClick={() => setIsCapacityOpen((v) => !v)}
+                    className="bg-[#EFF6FF] rounded-[20px] flex justify-between px-[20px] py-[15px] w-full text-left"
+                  >
                  <p className="text-sm font-semibold">Capacity</p>
                  <Image src={CapacityIcon} alt="Capicity Icon"/>
-                 </div>
-                   <div className="space-y-2 mt-4">
-                   <select aria-label="Capacity" className="w-full rounded-lg border border-[#D4D4D4] bg-white px-2 py-4 text-sm outline-none">
-                     <option>Is greater than or equal to</option>
-                     <option>Is less than or equal to</option>
-                     <option>Is exactly</option>
-                   </select>
-                   <input
-                     type="number"
-                     placeholder="5,000"
-                     className="w-full rounded-lg border border-[#D4D4D4] bg-white px-3 py-4 text-sm outline-none"
-                   />
-                 </div>
+                 </button>
+                  {isCapacityOpen && (
+                    <div className="space-y-2 mt-4">
+                    <select aria-label="Capacity" className="w-full rounded-lg border border-[#D4D4D4] bg-white px-2 py-4 text-sm outline-none" 
+                    value={capacityOperator} 
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setCapacityOperator(e.target.value as "gte" | "lte" | "eq" | "") }>
+                      <option value="">Select operator</option>
+                      <option value="gte">Is greater than or equal to</option>
+                      <option value="lte">Is less than or equal to</option>
+                      <option value="eq">Is exactly</option>
+                    </select>
+                    <input
+                      type="number"
+                      placeholder="5,000"
+                      className="w-full rounded-lg border border-[#D4D4D4] bg-white px-3 py-4 text-sm outline-none"
+                      value={capacityValue}
+                      onChange={(e) => setCapacityValue(e.target.value)}
+                    />
+                  </div>
+                  )}
                 </div>
                 <div>
-                  <div className="bg-[#EFF6FF] rounded-[20px] flex justify-between px-[20px] py-[15px] mb-[20px]">
+                  <button
+                    type="button"
+                    onClick={() => setIsDateOpen((v) => !v)}
+                    className="bg-[#EFF6FF] rounded-[20px] flex justify-between px-[20px] py-[15px] mb-[20px] w-full text-left"
+                  >
                  <p className="text-sm font-semibold">Date Range</p>
                  <Image src={CapacityIcon} alt="Capicity Icon"/>
-                 </div>
-                  <div className="flex flex-col gap-2">
-                    <label htmlFor="From" className="text-[#727A86] text-[15px] font-[400]">
-                        From
-                    <input
-                      type="date"
-                      className="w-full border rounded-lg px-[10px] py-2 "
-                      placeholder="Select"
-                      
-                    />
-                    </label>
-                    <label htmlFor="From" className="text-[#727A86] text-[15px] font-[400]">
-                        To
-                    <input
-                      type="date"
-                      className="w-full border rounded-lg px-[10px] py-2 "
-                      placeholder="Select"
-                    />
-                    </label>
-                  </div>
+                 </button>
+                  {isDateOpen && (
+                    <div className="flex flex-col gap-2">
+                      <label htmlFor="From" className="text-[#727A86] text-[15px] font-[400]">
+                          From
+                      <input
+                        type="date"
+                        className="w-full border rounded-lg px-[10px] py-2 "
+                        placeholder="Select"
+                        value={dateFrom}
+                        onChange={(e) => setDateFrom(e.target.value)}
+                      />
+                      </label>
+                      <label htmlFor="From" className="text-[#727A86] text-[15px] font-[400]">
+                          To
+                      <input
+                        type="date"
+                        className="w-full border rounded-lg px-[10px] py-2 "
+                        placeholder="Select"
+                        value={dateTo}
+                        onChange={(e) => setDateTo(e.target.value)}
+                      />
+                      </label>
+                    </div>
+                  )}
                 </div>
+
+                <div className="mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setIsStateOpen((v) => !v)}
+                    className="bg-[#EFF6FF] rounded-[20px] flex justify-between px-[20px] py-[15px] w-full text-left"
+                  >
+                 <p className="text-sm font-semibold">State</p>
+                 <Image src={CapacityIcon} alt="Capicity Icon"/>
+                 </button>
+                  {isStateOpen && (
+                    <div className="space-y-2 mt-4">
+                    <select aria-label="Payment Type" className="w-full rounded-lg border border-[#D4D4D4] bg-white px-2 py-4 text-sm outline-none" value={paymentType} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setPaymentType(e.target.value as "all" | "incoming" | "outgoing" | "") }>
+                      <option value="">Select type</option>
+                      <option value="all">All Payments</option>
+                      <option value="incoming">Incoming Payments</option>
+                      <option value="outgoing">Outgoing Payments</option>
+                    </select>
+                  </div>
+                  )}
+                </div>
+
+                
                 
               </div>
             </div>

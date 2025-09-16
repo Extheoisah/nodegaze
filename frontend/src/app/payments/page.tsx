@@ -68,21 +68,79 @@ const paymentData = [
 
 const paymentTypes = [
   { label: "All Payments", key: "all" },
-  { label: "Outgoing Payments", key: "outgoing" },
   { label: "Incoming Payments", key: "incoming" },
-  { label: "Forwarded Payments", key: "forwarded" },
-
+  { label: "Outgoing Payments", key: "outgoing" },
 ];
+
+export type PaymentFilters = {
+  paymentType?: "all" | "incoming" | "outgoing";
+  operator?: "gte" | "lte" | "eq";
+  value?: number;
+  from?: string; // YYYY-MM-DD
+  to?: string;   // YYYY-MM-DD
+};
 
 export default function Page() {
 
     const [selectedType, setSelectedType] = React.useState<string>("all");
 const [payments, setPayments] = React.useState<Payment[]>([]);
+const [incomingCount, setIncomingCount] = React.useState<number>(0);
+const [outgoingCount, setOutgoingCount] = React.useState<number>(0);
+const [allCount, setAllCount] = React.useState<number>(0);
+const [filters, setFilters] = React.useState<PaymentFilters>({});
 
+React.useEffect(() => {
+  async function fetchIncomingCount() {
+    try {
+      const res = await fetch(`/api/payments?payment_types=incoming&per_page=1&page=1`);
+      const data = await res.json();
+      const count = data?.pagination?.total_items ?? data?.data?.items?.length ?? 0;
+      setIncomingCount(Number(count) || 0);
+    } catch {
+      setIncomingCount(0);
+    }
+  }
+  fetchIncomingCount();
+}, []);
+
+React.useEffect(() => {
+  async function fetchAllCount() {
+    try {
+      const res = await fetch(`/api/payments?per_page=1&page=1`);
+      const data = await res.json();
+      const count = data?.pagination?.total_items ?? data?.data?.items?.length ?? 0;
+      setAllCount(Number(count) || 0);
+    } catch {
+      setAllCount(0);
+    }
+  }
+  fetchAllCount();
+}, []);
+
+React.useEffect(() => {
+  async function fetchOutgoingCount() {
+    try {
+      const res = await fetch(`/api/payments?payment_types=outgoing&per_page=1&page=1`);
+      const data = await res.json();
+      const count = data?.pagination?.total_items ?? data?.data?.items?.length ?? 0;
+      setOutgoingCount(Number(count) || 0);
+    } catch {
+      setOutgoingCount(0);
+    }
+  }
+  fetchOutgoingCount();
+}, []);
+
+const handleApplyFilters = (applied: PaymentFilters) => {
+  setFilters(applied);
+  if (applied.paymentType) {
+    setSelectedType(applied.paymentType);
+  }
+};
   
   return (
     <AppLayout>
-      <PaymentHeader />
+      <PaymentHeader onApplyFilters={handleApplyFilters} />
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {paymentData.map((metric, index) => (
           <PaymentCard
@@ -143,13 +201,13 @@ const [payments, setPayments] = React.useState<Payment[]>([]);
                   : "bg-[#ededed] border-transparent text-[#344054] hover:bg-[#e0e7ef]"
               }
             `}
-            >{type.key === "all" ? payments.length : 0}</div>
+            >{type.key === "incoming" ? incomingCount : type.key === "all" ? allCount : type.key === "outgoing" ? outgoingCount : 0}</div>
           </button>
         ))}
       </div>
 
       <div className="h-full">
-        <DataTable payments={payments} setPayments={setPayments} />
+        <DataTable payments={payments} setPayments={setPayments} selectedType={selectedType} filters={filters} />
       </div>
     </AppLayout>
   );

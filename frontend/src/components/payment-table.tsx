@@ -31,26 +31,37 @@ import {
 
 export type Payment = {
   state: string;
-  type: string;
+  payment_type: string;
   amount_sat: number;
   amount_usd: number;
   routing_fee: number;
   creation_time: {
     secs_since_epoch: number;
     nanos_since_epoch: number;
-  };
+  } | number;
   invoice: string;
   payment_hash: string;
   completed_at: number;
 };
 
+export type TableFilters = {
+  paymentType?: "all" | "incoming" | "outgoing";
+  operator?: "gte" | "lte" | "eq";
+  value?: number;
+  from?: string;
+  to?: string;
+};
 
 export function DataTable({
   payments,
   setPayments,
+  selectedType,
+  filters,
 }: {
   payments: Payment[];
   setPayments: React.Dispatch<React.SetStateAction<Payment[]>>;
+  selectedType: string;
+  filters?: TableFilters;
 }) {
   const [page, setPage] = React.useState(1);
   const [totalPages, setTotalPages] = React.useState(1);
@@ -59,9 +70,21 @@ export function DataTable({
   React.useEffect(() => {
     async function fetchPayments() {
       try {
-        const res = await fetch(`/api/payments?page=${page}&per_page=10`);
+        const params = new URLSearchParams();
+        params.set("page", String(page));
+        params.set("per_page", "10");
+        const effectiveType = (filters?.paymentType ?? selectedType);
+        if (effectiveType && effectiveType !== "all") {
+          params.set("payment_types", effectiveType);
+        }
+        if (filters?.operator) params.set("operator", filters.operator);
+        if (typeof filters?.value === "number") params.set("value", String(filters.value));
+        if (filters?.from) params.set("from", filters.from);
+        if (filters?.to) params.set("to", filters.to);
+
+        const res = await fetch(`/api/payments?${params.toString()}`);
         const data = await res.json();
-        console.log("API RESPONSE:", data); 
+        console.log("API RESPONSE:", data);
         setPayments(data.data.items || []);
         setTotalPages(data.pagination?.total_pages || 1);
       } catch (err) {
@@ -69,7 +92,7 @@ export function DataTable({
       }
     }
     fetchPayments();
-  }, [page, setPayments]);
+  }, [page, selectedType, filters, setPayments]);
 
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -96,7 +119,7 @@ export function DataTable({
               return "bg-green-100 text-green-800 border-green-200";
             case "Failed":
               return "bg-red-100 text-red-800 border-red-200";
-            case "Inflight":
+            case "Pending":
               return "bg-yellow-100 text-yellow-800 border-yellow-200";
             default:
               return "";
@@ -114,19 +137,19 @@ export function DataTable({
       },
     },
     {
-  accessorKey: "type",
+  accessorKey: "payment_type",
   header: "Type",
   cell: ({ row }) => {
     // Use optional chaining and fallback to "Unknown" if type is missing
-    const type = row.getValue("type") as string | undefined;
+    const type = row.getValue("payment_type") as string | undefined;
     const getTypeStyle = (type?: string) => {
       switch (type) {
         case "Outgoing":
-          return "bg-green-100 text-green-800 border-green-200";
+          return "bg-gray-100 text-gray-600 border-gray-200";
         case "Incoming":
-          return "bg-red-100 text-red-800 border-red-200";
+          return "bg-gray-100 text-gray-600 border-gray-200";
         case "Forwarded":
-          return "bg-yellow-100 text-yellow-800 border-yellow-200";
+          return "bg-gray-100 text-gray-600 border-gray-200";
         default:
           return "bg-gray-100 text-gray-600 border-gray-200";
       }
@@ -204,9 +227,19 @@ export function DataTable({
       accessorKey: "creation_time",
       header: "Date",
       cell: ({ row }) => {
-        const creation = row.getValue("creation_time") as { secs_since_epoch: number };
-        const date = creation?.secs_since_epoch
-          ? new Date(creation.secs_since_epoch * 1000).toLocaleDateString()
+        const creation = row.getValue("creation_time") as
+          | number
+          | { secs_since_epoch: number }
+          | undefined
+          | null;
+        const secsSinceEpoch =
+          typeof creation === "number"
+            ? creation
+            : (creation && typeof creation === "object" && "secs_since_epoch" in creation
+                ? (creation as { secs_since_epoch: number }).secs_since_epoch
+                : undefined);
+        const date = secsSinceEpoch
+          ? new Date(secsSinceEpoch * 1000).toLocaleDateString()
           : "-";
         return <div className="text-grey-dark">{date}</div>;
       },
