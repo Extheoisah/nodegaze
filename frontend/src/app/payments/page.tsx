@@ -73,7 +73,7 @@ const paymentTypes = [
 ];
 
 export type PaymentFilters = {
-  paymentType?: "all" | "incoming" | "outgoing";
+  paymentState?: "settled" | "failed" | "pending";
   operator?: "gte" | "lte" | "eq";
   value?: number;
   from?: string; // YYYY-MM-DD
@@ -82,7 +82,7 @@ export type PaymentFilters = {
 
 export default function Page() {
 
-    const [selectedType, setSelectedType] = React.useState<string>("all");
+    const [selectedState, setSelectedState] = React.useState<string>("all");
 const [payments, setPayments] = React.useState<Payment[]>([]);
 const [incomingCount, setIncomingCount] = React.useState<number>(0);
 const [outgoingCount, setOutgoingCount] = React.useState<number>(0);
@@ -133,8 +133,8 @@ React.useEffect(() => {
 
 const handleApplyFilters = (applied: PaymentFilters) => {
   setFilters(applied);
-  if (applied.paymentType) {
-    setSelectedType(applied.paymentType);
+  if (applied.paymentState) {
+    setSelectedState(applied.paymentState);
   }
 };
   
@@ -163,7 +163,7 @@ const handleApplyFilters = (applied: PaymentFilters) => {
           <button
             key={type.key}
             type="button"
-            onClick={() => setSelectedType(type.key)}
+            onClick={() => {/* keeping counts clickable but not affecting selectedState */}}
             className={`
               border-[1px]
               rounded-[50px]
@@ -176,9 +176,8 @@ const handleApplyFilters = (applied: PaymentFilters) => {
               transition-colors
               duration-150
               ${
-                selectedType === type.key
-                  ? "bg-[#EFF6FF] border-blue-500 text-[#204ECF]"
-                  : "bg-[#ededed] border-transparent text-[#344054] hover:bg-[#e0e7ef]"
+                // keep neutral styling since not tied to selectedState now
+                "bg-[#ededed] border-transparent text-[#344054] hover:bg-[#e0e7ef]"
               }
             `}
           >
@@ -196,9 +195,7 @@ const handleApplyFilters = (applied: PaymentFilters) => {
               transition-colors
               duration-150
               ${
-                selectedType === type.key
-                  ? "bg-[#204ECF]  border-blue-500 text-[#FFFFFF]"
-                  : "bg-[#ededed] border-transparent text-[#344054] hover:bg-[#e0e7ef]"
+                "bg-[#ededed] border-transparent text-[#344054]"
               }
             `}
             >{type.key === "incoming" ? incomingCount : type.key === "all" ? allCount : type.key === "outgoing" ? outgoingCount : 0}</div>
@@ -207,7 +204,7 @@ const handleApplyFilters = (applied: PaymentFilters) => {
       </div>
 
       <div className="h-full">
-        <DataTable payments={payments} setPayments={setPayments} selectedType={selectedType} filters={filters} />
+        <DataTable payments={payments} setPayments={setPayments} selectedState={selectedState} filters={filters} />
       </div>
     </AppLayout>
   );

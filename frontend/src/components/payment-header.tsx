@@ -18,7 +18,7 @@ import Add from "../../public/add.svg"
 import CapacityIcon from "../../public/capacity-icon.svg"
 
 export type HeaderFilters = {
-  paymentType?: "all" | "incoming" | "outgoing";
+  paymentState?: "settled" | "failed" | "pending";
   operator?: "gte" | "lte" | "eq";
   value?: number;
   from?: string;
@@ -41,7 +41,7 @@ export function PaymentHeader({ onApplyFilters }: { onApplyFilters?: (filters: H
   const [capacityValue, setCapacityValue] = useState<string>("");
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
-  const [paymentType, setPaymentType] = useState<"all" | "incoming" | "outgoing" | "">("");
+  const [paymentState, setPaymentState] = useState<"settled" | "failed" | "pending" | "">("");
 
   if (!pageTitle) return null;
 
@@ -49,7 +49,7 @@ export function PaymentHeader({ onApplyFilters }: { onApplyFilters?: (filters: H
 
   const handleApply = () => {
     const filters: HeaderFilters = {};
-    if (paymentType) filters.paymentType = paymentType;
+    if (paymentState) filters.paymentState = paymentState;
     if (capacityOperator) filters.operator = capacityOperator;
     if (capacityValue) filters.value = Number(capacityValue);
     if (dateFrom) filters.from = dateFrom;
@@ -194,11 +194,11 @@ export function PaymentHeader({ onApplyFilters }: { onApplyFilters?: (filters: H
                  </button>
                   {isStateOpen && (
                     <div className="space-y-2 mt-4">
-                    <select aria-label="Payment Type" className="w-full rounded-lg border border-[#D4D4D4] bg-white px-2 py-4 text-sm outline-none" value={paymentType} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setPaymentType(e.target.value as "all" | "incoming" | "outgoing" | "") }>
-                      <option value="">Select type</option>
-                      <option value="all">All Payments</option>
-                      <option value="incoming">Incoming Payments</option>
-                      <option value="outgoing">Outgoing Payments</option>
+                    <select aria-label="Payment Type" className="w-full rounded-lg border border-[#D4D4D4] bg-white px-2 py-4 text-sm outline-none" value={paymentState} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setPaymentState(e.target.value as "settled" | "failed" | "pending" | "") }>
+                      <option value="">Select State</option>
+                      <option value="settled">Settled</option>
+                      <option value="failed">Failed</option>
+                      <option value="pending">Pending</option>
                     </select>
                   </div>
                   )}

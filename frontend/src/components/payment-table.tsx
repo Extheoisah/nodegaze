@@ -45,7 +45,7 @@ export type Payment = {
 };
 
 export type TableFilters = {
-  paymentType?: "all" | "incoming" | "outgoing";
+  paymentState?: "settled" | "failed" | "pending";
   operator?: "gte" | "lte" | "eq";
   value?: number;
   from?: string;
@@ -55,12 +55,12 @@ export type TableFilters = {
 export function DataTable({
   payments,
   setPayments,
-  selectedType,
+  selectedState,
   filters,
 }: {
   payments: Payment[];
   setPayments: React.Dispatch<React.SetStateAction<Payment[]>>;
-  selectedType: string;
+  selectedState: string;
   filters?: TableFilters;
 }) {
   const [page, setPage] = React.useState(1);
@@ -73,9 +73,9 @@ export function DataTable({
         const params = new URLSearchParams();
         params.set("page", String(page));
         params.set("per_page", "10");
-        const effectiveType = (filters?.paymentType ?? selectedType);
+        const effectiveType = (filters?.paymentState ?? selectedState);
         if (effectiveType && effectiveType !== "all") {
-          params.set("payment_types", effectiveType);
+          params.set("states", effectiveType);
         }
         if (filters?.operator) params.set("operator", filters.operator);
         if (typeof filters?.value === "number") params.set("value", String(filters.value));
@@ -92,7 +92,7 @@ export function DataTable({
       }
     }
     fetchPayments();
-  }, [page, selectedType, filters, setPayments]);
+  }, [page, selectedState, filters, setPayments]);
 
   const [copied, setCopied] = useState<string | null>(null);
 
