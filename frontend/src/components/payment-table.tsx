@@ -73,9 +73,15 @@ export function DataTable({
         const params = new URLSearchParams();
         params.set("page", String(page));
         params.set("per_page", "10");
-        const effectiveType = (filters?.paymentState ?? selectedState);
-        if (effectiveType && effectiveType !== "all") {
-          params.set("states", effectiveType);
+        // Map UI selections to backend query params:
+        // - selectedState (incoming/outgoing) -> payment_types
+        // - filters.paymentState (settled/failed/pending) -> states
+        // Both can be present at the same time
+        if (selectedState && selectedState !== "all") {
+          params.set("payment_types", selectedState);
+        }
+        if (filters?.paymentState) {
+          params.set("states", filters.paymentState);
         }
         if (filters?.operator) params.set("operator", filters.operator);
         if (typeof filters?.value === "number") params.set("value", String(filters.value));
@@ -83,9 +89,18 @@ export function DataTable({
         if (filters?.to) params.set("to", filters.to);
 
         const res = await fetch(`/api/payments?${params.toString()}`);
+        console.log("API URL:", `/api/payments?${params.toString()}`);
+        console.log("API Status:", res.status);
+        
+        if (!res.ok) {
+          const errorText = await res.text();
+          console.error("API Error Response:", errorText);
+          throw new Error(`API Error: ${res.status} - ${errorText}`);
+        }
+        
         const data = await res.json();
         console.log("API RESPONSE:", data);
-        setPayments(data.data.items || []);
+        setPayments(data?.data?.items || []);
         setTotalPages(data.pagination?.total_pages || 1);
       } catch (err) {
         console.error("Failed to fetch payments:", err);

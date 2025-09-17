@@ -133,9 +133,9 @@ React.useEffect(() => {
 
 const handleApplyFilters = (applied: PaymentFilters) => {
   setFilters(applied);
-  if (applied.paymentState) {
-    setSelectedState(applied.paymentState);
-  }
+  // Don't set selectedState for paymentState filters
+  // selectedState is only for payment types (incoming/outgoing)
+  // paymentState filters are handled separately in the table
 };
   
   return (
@@ -163,7 +163,7 @@ const handleApplyFilters = (applied: PaymentFilters) => {
           <button
             key={type.key}
             type="button"
-            onClick={() => {/* keeping counts clickable but not affecting selectedState */}}
+            onClick={() => setSelectedState(type.key)}
             className={`
               border-[1px]
               rounded-[50px]
@@ -176,8 +176,9 @@ const handleApplyFilters = (applied: PaymentFilters) => {
               transition-colors
               duration-150
               ${
-                // keep neutral styling since not tied to selectedState now
-                "bg-[#ededed] border-transparent text-[#344054] hover:bg-[#e0e7ef]"
+                selectedState === type.key
+                  ? "bg-[#EFF6FF] border-blue-500 text-[#204ECF]"
+                  : "bg-[#ededed] border-transparent text-[#344054] hover:bg-[#e0e7ef]"
               }
             `}
           >
@@ -195,7 +196,9 @@ const handleApplyFilters = (applied: PaymentFilters) => {
               transition-colors
               duration-150
               ${
-                "bg-[#ededed] border-transparent text-[#344054]"
+                selectedState === type.key
+                  ? "bg-[#204ECF]  border-blue-500 text-[#FFFFFF]"
+                  : "bg-[#ededed] border-transparent text-[#344054] hover:bg-[#e0e7ef]"
               }
             `}
             >{type.key === "incoming" ? incomingCount : type.key === "all" ? allCount : type.key === "outgoing" ? outgoingCount : 0}</div>
