@@ -65,11 +65,15 @@ export function DataTable({
 }) {
   const [page, setPage] = React.useState(1);
   const [totalPages, setTotalPages] = React.useState(1);
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [error, setError] = React.useState<string>("");
 
   // Fetch payments from endpoint
   React.useEffect(() => {
     async function fetchPayments() {
       try {
+        setIsLoading(true);
+        setError("");
         const params = new URLSearchParams();
         params.set("page", String(page));
         params.set("per_page", "10");
@@ -104,6 +108,14 @@ export function DataTable({
         setTotalPages(data.pagination?.total_pages || 1);
       } catch (err) {
         console.error("Failed to fetch payments:", err);
+        // surface a simple error state similar to channels table
+        setError(
+          err instanceof Error ? err.message : "Something went wrong while fetching payments"
+        );
+        // optional: clear payments on error
+        // setPayments([]);
+      } finally {
+        setIsLoading(false);
       }
     }
     fetchPayments();
@@ -323,7 +335,19 @@ export function DataTable({
             ))}
           </TableHeader>
           <TableBody>
-            {table.getRowModel().rows.length ? (
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={columns.length} className="py-6 text-center text-grey-accent">
+                  Loading payments...
+                </TableCell>
+              </TableRow>
+            ) : error ? (
+              <TableRow>
+                <TableCell colSpan={columns.length} className="py-6 text-center text-grey-accent">
+                  {"No Payments Available..."}
+                </TableCell>
+              </TableRow>
+            ) : table.getRowModel().rows.length ? (
               table.getRowModel().rows.map((row) => (
                 <TableRow key={row.id}>
                   {row.getVisibleCells().map((cell) => (
