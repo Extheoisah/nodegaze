@@ -77,10 +77,7 @@ export function DataTable({
         const params = new URLSearchParams();
         params.set("page", String(page));
         params.set("per_page", "10");
-        // Map UI selections to backend query params:
-        // - selectedState (incoming/outgoing) -> payment_types
-        // - filters.paymentState (settled/failed/pending) -> states
-        // Both can be present at the same time
+  
         if (selectedState && selectedState !== "all") {
           params.set("payment_types", selectedState);
         }

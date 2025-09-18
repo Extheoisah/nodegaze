@@ -18,7 +18,7 @@ import Add from "../../public/add.svg"
 import CapacityIcon from "../../public/capacity-icon.svg"
 
 export type HeaderFilters = {
-  paymentState?: "settled" | "failed" | "pending";
+  paymentState?: "settled" | "failed" | "inflight";
   operator?: "gte" | "lte" | "eq";
   value?: number;
   from?: string;
@@ -41,7 +41,7 @@ export function PaymentHeader({ onApplyFilters }: { onApplyFilters?: (filters: H
   const [capacityValue, setCapacityValue] = useState<string>("");
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
-  const [paymentState, setPaymentState] = useState<"settled" | "failed" | "pending" | "">("");
+  const [paymentState, setPaymentState] = useState<"settled" | "failed" | "inflight" | "">("");
 
   if (!pageTitle) return null;
 
@@ -194,11 +194,11 @@ export function PaymentHeader({ onApplyFilters }: { onApplyFilters?: (filters: H
                  </button>
                   {isStateOpen && (
                     <div className="space-y-2 mt-4">
-                    <select aria-label="Payment Type" className="w-full rounded-lg border border-[#D4D4D4] bg-white px-2 py-4 text-sm outline-none" value={paymentState} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setPaymentState(e.target.value as "settled" | "failed" | "pending" | "") }>
+                    <select aria-label="Payment Type" className="w-full rounded-lg border border-[#D4D4D4] bg-white px-2 py-4 text-sm outline-none" value={paymentState} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setPaymentState(e.target.value as "settled" | "failed" | "inflight" | "") }>
                       <option value="">Select State</option>
                       <option value="settled">Settled</option>
                       <option value="failed">Failed</option>
-                      <option value="pending">Pending</option>
+                      <option value="inflight">Pending</option>
                     </select>
                   </div>
                   )}
