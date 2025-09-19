@@ -153,7 +153,7 @@ export default function ProfilePage() {
             <div>
               <div>
                 <div className="text-sm text-grey-accent mb-1">Role</div>
-                <div className="text-base font-medium text-maya-blue">{user?.role || "-"}</div>
+                <div className="text-base font-medium text-maya-blue ">{user?.role || "-"}</div>
               </div>
 
               <div>

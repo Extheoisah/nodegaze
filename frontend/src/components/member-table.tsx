@@ -152,8 +152,10 @@ export function MemberTable() {
       header: "Role",
       cell: ({ row }) => {
         return (
-          <div className="font-normal text-grey-dark hover:text-blue-primary hover:underline cursor-pointer">
+            <div className="bg-gray-100 rounded-lg px-4 py-1 w-fit">
+          <div className="font-normal text-grey-dark hover:text-blue-primary hover:underline cursor-pointer ">
             {row.getValue("role")}
+          </div>
           </div>
         );
       },
