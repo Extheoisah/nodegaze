@@ -225,7 +225,6 @@ export function DataTable({
         return (
           <div className="flex items-center gap-1 relative">
             <div
-              // href={`/payments/${invoice}`}
               className="font-normal text-grey-dark hover:text-blue-primary hover:underline cursor-pointer truncate"
               title={invoice}
             >
