@@ -1,6 +1,5 @@
 "use client"
 
-
 import React from "react";
 import { AppLayout } from "@/components/app-layout";
 import { PaymentHeader } from "@/components/payment-header";
@@ -9,8 +8,6 @@ import { PaymentCard } from "@/components/payment-card";
 import { MiniChart } from "@/components/mini-chart";
 import node from "../../../public/node.svg";
 import type { Payment } from "@/components/payment-table";
-
-
 
 const paymentData = [
   {
@@ -45,7 +42,6 @@ const paymentData = [
     chart: <MiniChart color="red" />,
     icon: node,
   },
-
   {
     title: "Outgoing Payments(Amount)",
     trend: { value: "3.2%", direction: "down" as const },
@@ -54,7 +50,6 @@ const paymentData = [
     chart: <MiniChart color="red" />,
     icon: node,
   },
-
   {
     title: "Outgoing Payments(Amount)",
     trend: { value: "3.2%", direction: "down" as const },
@@ -65,7 +60,6 @@ const paymentData = [
   },
 ];
 
-
 const paymentTypes = [
   { label: "All Payments", key: "all" },
   { label: "Incoming Payments", key: "incoming" },
@@ -73,71 +67,128 @@ const paymentTypes = [
 ];
 
 export type PaymentFilters = {
-  paymentState?: "settled" | "failed" | "pending";
+  paymentState?: "settled" | "failed" | "inflight";
   operator?: "gte" | "lte" | "eq";
   value?: number;
-  from?: string; // YYYY-MM-DD
-  to?: string;   // YYYY-MM-DD
+  from?: string; 
+  to?: string;   
 };
 
 export default function Page() {
+  const [selectedState, setSelectedState] = React.useState<string>("all");
+  const [payments, setPayments] = React.useState<Payment[]>([]);
+  const [incomingCount, setIncomingCount] = React.useState<number>(0);
+  const [outgoingCount, setOutgoingCount] = React.useState<number>(0);
+  const [allCount, setAllCount] = React.useState<number>(0);
+  const [filters, setFilters] = React.useState<PaymentFilters>({});
+  const [isFiltered, setIsFiltered] = React.useState<boolean>(false);
+  console.log(isFiltered)
 
-    const [selectedState, setSelectedState] = React.useState<string>("all");
-const [payments, setPayments] = React.useState<Payment[]>([]);
-const [incomingCount, setIncomingCount] = React.useState<number>(0);
-const [outgoingCount, setOutgoingCount] = React.useState<number>(0);
-const [allCount, setAllCount] = React.useState<number>(0);
-const [filters, setFilters] = React.useState<PaymentFilters>({});
-
-React.useEffect(() => {
-  async function fetchIncomingCount() {
-    try {
-      const res = await fetch(`/api/payments?payment_types=incoming&per_page=1&page=1`);
-      const data = await res.json();
-      const count = data?.pagination?.total_items ?? data?.data?.items?.length ?? 0;
-      setIncomingCount(Number(count) || 0);
-    } catch {
-      setIncomingCount(0);
+  // Fetch initial counts (without filters)
+  React.useEffect(() => {
+    async function fetchIncomingCount() {
+      try {
+        const res = await fetch(`/api/payments?payment_types=incoming&per_page=1&page=1`);
+        const data = await res.json();
+        const count = data?.pagination?.total_items ?? data?.data?.items?.length ?? 0;
+        setIncomingCount(Number(count) || 0);
+      } catch {
+        setIncomingCount(0);
+      }
     }
-  }
-  fetchIncomingCount();
-}, []);
+    fetchIncomingCount();
+  }, []);
 
-React.useEffect(() => {
-  async function fetchAllCount() {
-    try {
-      const res = await fetch(`/api/payments?per_page=1&page=1`);
-      const data = await res.json();
-      const count = data?.pagination?.total_items ?? data?.data?.items?.length ?? 0;
-      setAllCount(Number(count) || 0);
-    } catch {
-      setAllCount(0);
+  React.useEffect(() => {
+    async function fetchAllCount() {
+      try {
+        const res = await fetch(`/api/payments?per_page=1&page=1`);
+        const data = await res.json();
+        const count = data?.pagination?.total_items ?? data?.data?.items?.length ?? 0;
+        setAllCount(Number(count) || 0);
+      } catch {
+        setAllCount(0);
+      }
     }
-  }
-  fetchAllCount();
-}, []);
+    fetchAllCount();
+  }, []);
 
-React.useEffect(() => {
-  async function fetchOutgoingCount() {
-    try {
-      const res = await fetch(`/api/payments?payment_types=outgoing&per_page=1&page=1`);
-      const data = await res.json();
-      const count = data?.pagination?.total_items ?? data?.data?.items?.length ?? 0;
-      setOutgoingCount(Number(count) || 0);
-    } catch {
-      setOutgoingCount(0);
+  React.useEffect(() => {
+    async function fetchOutgoingCount() {
+      try {
+        const res = await fetch(`/api/payments?payment_types=outgoing&per_page=1&page=1`);
+        const data = await res.json();
+        const count = data?.pagination?.total_items ?? data?.data?.items?.length ?? 0;
+        setOutgoingCount(Number(count) || 0);
+      } catch {
+        setOutgoingCount(0);
+      }
     }
-  }
-  fetchOutgoingCount();
-}, []);
+    fetchOutgoingCount();
+  }, []);
 
-const handleApplyFilters = (applied: PaymentFilters) => {
-  setFilters(applied);
-  // Don't set selectedState for paymentState filters
-  // selectedState is only for payment types (incoming/outgoing)
-  // paymentState filters are handled separately in the table
-};
-  
+  // Fetch filtered counts when filters are applied
+  const fetchFilteredCounts = React.useCallback(async (appliedFilters: PaymentFilters) => {
+    try {
+      // Build query params for filters
+      const buildParams = (paymentType?: string) => {
+        const params = new URLSearchParams();
+        params.set("per_page", "1");
+        params.set("page", "1");
+        
+        if (paymentType && paymentType !== "all") {
+          params.set("payment_types", paymentType);
+        }
+        if (appliedFilters.paymentState) {
+          params.set("states", appliedFilters.paymentState);
+        }
+        if (appliedFilters.operator) params.set("operator", appliedFilters.operator);
+        if (typeof appliedFilters.value === "number") params.set("value", String(appliedFilters.value));
+        if (appliedFilters.from) params.set("from", appliedFilters.from);
+        if (appliedFilters.to) params.set("to", appliedFilters.to);
+        
+        return params;
+      };
+
+      // Fetch all three counts with filters
+      const [allRes, incomingRes, outgoingRes] = await Promise.all([
+        fetch(`/api/payments?${buildParams().toString()}`),
+        fetch(`/api/payments?${buildParams("incoming").toString()}`),
+        fetch(`/api/payments?${buildParams("outgoing").toString()}`)
+      ]);
+
+      const [allData, incomingData, outgoingData] = await Promise.all([
+        allRes.json(),
+        incomingRes.json(), 
+        outgoingRes.json()
+      ]);
+
+      setAllCount(allData?.pagination?.total_items ?? 0);
+      setIncomingCount(incomingData?.pagination?.total_items ?? 0);
+      setOutgoingCount(outgoingData?.pagination?.total_items ?? 0);
+    } catch (error) {
+      console.error("Failed to fetch filtered counts:", error);
+    }
+  }, []);
+
+  const handleApplyFilters = (applied: PaymentFilters) => {
+    const hasActiveFilters = !!(
+      applied.paymentState || 
+      applied.operator || 
+      applied.value || 
+      applied.from || 
+      applied.to
+    );
+
+    setFilters(applied);
+    setIsFiltered(hasActiveFilters);
+
+    if (hasActiveFilters) {
+      // Fetch filtered counts
+      fetchFilteredCounts(applied);
+    }
+  };
+
   return (
     <AppLayout>
       <PaymentHeader onApplyFilters={handleApplyFilters} />
@@ -155,10 +206,8 @@ const handleApplyFilters = (applied: PaymentFilters) => {
         ))}
       </div>
 
-
-{/* Payment selection buttons */}
-
-       <div className="w-[70%] text-[15px] font-[500] flex gap-[15px] my-6">
+      {/* Payment selection buttons */}
+      <div className="w-[70%] text-[15px] font-[500] flex gap-[15px] my-6">
         {paymentTypes.map((type) => (
           <button
             key={type.key}

@@ -45,7 +45,7 @@ export type Payment = {
 };
 
 export type TableFilters = {
-  paymentState?: "settled" | "failed" | "pending";
+  paymentState?: "settled" | "failed" | "inflight";
   operator?: "gte" | "lte" | "eq";
   value?: number;
   from?: string;
@@ -344,6 +344,15 @@ export function DataTable({
                   {"No Payments Available..."}
                 </TableCell>
               </TableRow>
+            ) : payments.length === 0 ? (
+              <TableRow>
+                <TableCell
+                  colSpan={columns.length}
+                  className="h-24 text-center text-grey-accent"
+                >
+                  No payment available
+                </TableCell>
+              </TableRow>
             ) : table.getRowModel().rows.length ? (
               table.getRowModel().rows.map((row) => (
                 <TableRow key={row.id}>
@@ -366,7 +375,7 @@ export function DataTable({
                   colSpan={columns.length}
                   className="h-24 text-center"
                 >
-                  No Payments Available...
+                  No payment available
                 </TableCell>
               </TableRow>
             )}
