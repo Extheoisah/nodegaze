@@ -65,6 +65,7 @@ Choose your platform for detailed setup instructions:
 - **[Windows (WSL)](docs/build-windows.md)** - Setup using Windows Subsystem for Linux
 - **[macOS](docs/build-macos.md)** - Setup on macOS systems
 - **[Linux](docs/build-unix.md)** - Setup on Linux distributions
+- **[Nix](docs/build-nix.md)** - Setup on nix/nixOs systems
 
 ### Quick Development Setup (Make Required)
 
@@ -81,7 +82,7 @@ If you already have all prerequisites installed and Make available:
    # Backend environment
    cp .env.example .env
    # Edit .env with your configuration
-   
+
    # Frontend environment
    cd frontend
    cp .env.example .env.local
@@ -93,15 +94,15 @@ If you already have all prerequisites installed and Make available:
    ```bash
    make dev
    ```
-   
+
    **Or step by step:**
    ```bash
    # 1. Set up database
    make setup
-   
+
    # 2. Run backend (terminal 1)
    make run
-   
+
    # 3. Run frontend (terminal 2)
    cd frontend && npm install && npm run dev
    ```
@@ -162,7 +163,7 @@ The Nix shell provides:
 The Nix shell provides a complete development environment:
 
 - **bacon**: Continuous testing and checking
-- **sqlx-cli**: Database migrations and management  
+- **sqlx-cli**: Database migrations and management
 - **rust-analyzer**: LSP server for IDE support
 
 ```bash
