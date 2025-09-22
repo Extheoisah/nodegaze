@@ -58,44 +58,45 @@ NodeGaze consists of two main components:
 - **Docker** (optional for Polar testing)
 - **Polar** (for local development & testing)
 
-### Getting Started
+### Build Instructions
+
+Choose your platform for detailed setup instructions:
+
+- **[Windows (WSL)](docs/build-windows.md)** - Setup using Windows Subsystem for Linux
+- **[macOS](docs/build-macos.md)** - Setup on macOS systems
+- **[Linux](docs/build-unix.md)** - Setup on Linux distributions
+
+### Quick Development Setup (Make Required)
+
+If you already have all prerequisites installed and Make available:
 
 1. **Clone the repository**
-
    ```bash
    git clone https://github.com/Extheoisah/nodegaze.git
+   cd nodegaze
    ```
 
 2. **Environment Setup**
-
-   #### Backend environment
-
    ```bash
+   # Backend environment
    cp .env.example .env
-   ```
-
-   #### Edit .env with your configuration
-
-   #### Frontend environment
-
-   ```bash
+   # Edit .env with your configuration
+   
+   # Frontend environment
    cd frontend
    cp .env.example .env.local
+   # Edit .env.local with your configuration
+   cd ..
    ```
 
-3. **Quick Development Setup**
-
-   #### Complete setup (database creation, migrations, and SQLx preparation) then run
-
+3. **Complete setup and run**
    ```bash
    make dev
    ```
-
+   
    **Or step by step:**
-
-   #### 1. Set up database
-
    ```bash
+   # 1. Set up database
    make setup
    
    # 2. Run backend (terminal 1)
@@ -106,8 +107,8 @@ NodeGaze consists of two main components:
    ```
 
 4. **Access the application**
-   - Frontend: <http://localhost:3000>
-   - Backend API: <http://localhost:3030>
+   - Frontend: <http://localhost:3000> (or port specified in frontend/.env.local)
+   - Backend API: <http://localhost:3030> (or SERVER_PORT in .env)
 
 ### Manual Database Management
 
@@ -124,13 +125,34 @@ The project uses SQLite with SQLx for database operations. Manual commands:
 
 Copy `.env.example` to `.env` and configure:
 
-- `DATABASE_URL`: SQLite database path
+#### Database Configuration
+- `DATABASE_URL`: SQLite database path (default: sqlite:nodegaze.db)
 - `DB_MAX_CONNECTIONS`: Maximum database connections (default: 5)
 - `DB_ACQUIRE_TIMEOUT_SECONDS`: Connection timeout (default: 3)
+
+#### Security & Authentication
+- `ENCRYPTION_KEY`: Key for sensitive data encryption (32 bytes base64 encoded)
 - `JWT_SECRET`: Secret key for JWT token generation
 - `JWT_EXPIRES_IN_SECONDS`: JWT token expiration time (default: 86400)
-- `SERVER_PORT`: Server port (default: 3000)
-- `ENCRYPTION_KEY`: Key for data encryption
+
+#### Server Configuration
+- `SERVER_PORT`: Backend server port (default: 3030)
+- `BASE_URL`: Frontend base URL for backend communication (default: http://localhost:3000)
+
+#### Email Configuration (SMTP)
+- `SMTP_HOST`: SMTP server hostname
+- `SMTP_PORT`: SMTP server port (default: 587)
+- `SMTP_USERNAME`: SMTP authentication username
+- `SMTP_PASSWORD`: SMTP authentication password (use app passwords for Gmail)
+- `FROM_EMAIL`: Email address for outgoing emails
+- `FROM_NAME`: Display name for outgoing emails
+
+#### Logging
+- `RUST_LOG`: Logging level (default: info, options: error, warn, info, debug, trace)
+
+### Frontend Environment Variables
+
+Copy `frontend/.env.example` to `frontend/.env.local` and configure as needed for your Next.js application.
 
 ## 🛠️ Development Tools
 
