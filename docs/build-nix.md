@@ -16,12 +16,19 @@ The project includes a `shell.nix` file that provides all necessary dependencies
 
 #### Step 1: Enter the Nix Shell
 
-```bash
-# Clone the repository first
-git clone https://github.com/Extheoisah/nodegaze.git
-cd nodegaze
+Clone the repository first:
 
-# Enter the development shell
+```bash
+git clone https://github.com/Extheoisah/nodegaze.git
+```
+
+```bash
+cd nodegaze
+```
+
+Enter the development shell:
+
+```bash
 nix-shell
 ```
 
@@ -35,51 +42,81 @@ This will automatically install and make available:
 
 #### Step 2: Install Rust (if not already installed)
 
+Install Rust using rustup (if not already installed):
+
 ```bash
-# Install Rust using rustup (if not already installed)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+```bash
 source ~/.cargo/env
 ```
 
 #### Step 3: Environment Configuration
 
 Set up backend environment:
+
 ```bash
 cp .env.example .env
-# Edit .env with your configuration
+```
+
+Edit .env with your configuration:
+
+```bash
 $EDITOR .env
 ```
 
 Set up frontend environment:
+
 ```bash
 cd frontend
+```
+
+```bash
 cp .env.example .env.local
-# Edit .env.local with your configuration
+```
+
+Edit .env.local with your configuration:
+
+```bash
 $EDITOR .env.local
+```
+
+```bash
 cd ..
 ```
 
 #### Step 4: Database Setup
 
-```bash
-# Run database migrations
-sqlx migrate run --source backend/migrations
+Run database migrations:
 
-# Generate offline SQLx data
+```bash
+sqlx migrate run --source backend/migrations
+```
+
+Generate offline SQLx data:
+
+```bash
 cargo sqlx prepare --workspace
 ```
 
 #### Step 5: Build and Run
 
+Using the provided Makefile (recommended):
+
 ```bash
-# Using the provided Makefile (recommended)
 make dev
+```
 
-# Or manually:
-# Backend
+Or manually - Backend:
+
+```bash
 cd backend && cargo run &
+```
 
-# Frontend (in new terminal)
+Frontend (in new terminal):
+
+```bash
 cd frontend && npm install && npm run dev
 ```
 
@@ -112,26 +149,15 @@ If you prefer using Nix flakes, you can create a `flake.nix` file:
       {
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
-            # Rust toolchain
             rustToolchain
-
-            # Node.js
-            nodejs_18
+            nodejs_22
             npm
-
-            # Database and CLI tools
             sqlx-cli
             sqlite
-
-            # Development tools
             bacon
-
-            # System dependencies
             openssl
             pkg-config
             protobuf
-
-            # Additional build tools
             gnumake
             git
           ];
@@ -153,11 +179,16 @@ If you prefer using Nix flakes, you can create a `flake.nix` file:
 ```
 
 Then use:
-```bash
-# Enter development shell
-nix develop
 
-# Or run commands directly
+Enter development shell:
+
+```bash
+nix develop
+```
+
+Or run commands directly:
+
+```bash
 nix develop -c make dev
 ```
 
@@ -166,48 +197,76 @@ nix develop -c make dev
 ### Common Issues
 
 #### Rust not found after entering nix-shell
+
+If Rust is not available, install it manually:
+
 ```bash
-# If Rust is not available, install it manually
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+```bash
 source ~/.cargo/env
 ```
 
 #### Node.js version issues
+
 The shell.nix provides Node.js 22. If you need a different version, modify the shell.nix:
+
 ```nix
 buildInputs = with pkgs; [
-  nodejs_20  # or nodejs_16, nodejs_latest, etc.
-  # ... other packages
+  nodejs_20
 ];
 ```
 
 #### SQLite/SQLx issues
-Ensure SQLx CLI is properly installed:
-```bash
-# Check if sqlx is available
-which sqlx
 
-# If not, install manually
+Ensure SQLx CLI is properly installed.
+
+Check if sqlx is available:
+
+```bash
+which sqlx
+```
+
+If not, install manually:
+
+```bash
 cargo install sqlx-cli
 ```
 
 #### OpenSSL linking errors
-This is usually resolved by the nix shell providing the correct pkg-config paths. If issues persist:
-```bash
-# Check if pkg-config can find OpenSSL
-pkg-config --libs openssl
 
-# Set environment variables if needed
+This is usually resolved by the nix shell providing the correct pkg-config paths. If issues persist:
+
+Check if pkg-config can find OpenSSL:
+
+```bash
+pkg-config --libs openssl
+```
+
+Set environment variables if needed:
+
+```bash
 export PKG_CONFIG_PATH="${pkgs.openssl.dev}/lib/pkgconfig"
 ```
 
 #### Database migration errors
-```bash
-# Ensure the database file exists and permissions are correct
-ls -la backend/
-chmod 644 backend/nodegaze.db  # if it exists
 
-# Reset migrations if needed
+Ensure the database file exists and permissions are correct:
+
+```bash
+ls -la backend/
+```
+
+If it exists:
+
+```bash
+chmod 644 backend/nodegaze.db
+```
+
+Reset migrations if needed:
+
+```bash
 make setup
 ```
 
