@@ -7,7 +7,7 @@ pkgs.mkShell {
     sqlx-cli       # SQLx command-line interface for database management
 
     # Node.js and frontend tools
-    nodejs_22     # Node.js 18 LTS
+    nodejs_22     # Node.js 22 LTS
     npm            # Node package manager
 
     # Database tools (useful with sqlx-cli)
