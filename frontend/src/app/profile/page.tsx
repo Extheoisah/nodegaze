@@ -16,12 +16,12 @@ export default function ProfilePage() {
   const [user, setUser] = React.useState<{ name: string; email: string; role: string } | null>(null);
   const [memberCount, setMemberCount] = React.useState<number | null>(null);
   const [showAddMember, setShowAddMember] = React.useState(false);
+  const [showInviteSent, setShowInviteSent] = React.useState(false);
+  const [showInviteFailed, setShowInviteFailed] = React.useState(false);
 
-  // New: collected emails shown as chips
-  const [emails, setEmails] = React.useState<string[]>([]);
+  // const [emails, setEmails] = React.useState<string[]>([]);
   const [emailInput, setEmailInput] = React.useState<string>("");
 
-  // Accepts Blessing@gmail.com and also @yahoo.com-like forms (kept your original regex)
   const emailRegex = React.useMemo(() => /^(?:[^\s@]+)?@[^\s@]+\.[^\s@]+$/i, []);
 
   React.useEffect(() => {
@@ -31,28 +31,45 @@ export default function ProfilePage() {
         setIsLoading(true);
         setError("");
         const res = await fetch(`/api/profile?id=${encodeURIComponent(session.user.id)}`);
-        if (!res.ok) {
-          const txt = await res.text();
-          throw new Error(txt || "Failed to fetch user details");
+        if (res.ok) {
+          const data = await res.json();
+          const apiUser = data?.data;
+          setUser({
+            name: session.user.name || apiUser?.username || "",
+            email: session.user.email || apiUser?.email || "",
+            role: session.user.role || apiUser?.role || "",
+          });
+        } else {
+          console.warn("Profile API failed, using session data only");
+          setUser({
+            name: session.user.name || "",
+            email: session.user.email || "",
+            role: session.user.role || "",
+          });
         }
-        const data = await res.json();
-        const apiUser = data?.data;
-        setUser({
-          name: session.user.name || apiUser?.username || "",
-          email: session.user.email || apiUser?.email || "",
-          role: session.user.role || apiUser?.role || "",
-        });
-        // Fetch member count in parallel after session ensures token
         try {
           const usersRes = await fetch(`/api/account/users?per_page=1&page=1`);
           if (usersRes.ok) {
             const usersData = await usersRes.json();
             const total = usersData?.pagination?.total_items ?? usersData?.data?.total ?? usersData?.data?.items?.length ?? null;
             setMemberCount(typeof total === "number" ? total : null);
+          } else {
+            console.warn("Member count API failed");
           }
-        } catch {}
+        } catch (memberError) {
+          console.warn("Member count API error:", memberError);
+        }
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to fetch user");
+        console.error("Unexpected error in fetchUser:", e);
+        if (!session?.user?.name && !session?.user?.email) {
+          setError("Failed to load user data");
+        } else {
+          setUser({
+            name: session.user.name || "",
+            email: session.user.email || "",
+            role: session.user.role || "",
+          });
+        }
       } finally {
         setIsLoading(false);
       }
@@ -60,32 +77,101 @@ export default function ProfilePage() {
     fetchUser();
   }, [session?.user?.id, session?.user?.name, session?.user?.email, session?.user?.role]);
 
-  // Helper to parse a string containing one or many emails separated by commas,
-  // add valid ones to the emails array and keep any trailing partial input.
-  const addEmailsFromString = (value: string) => {
-    const parts = value.split(",").map((s) => s.trim()).filter(Boolean);
-    if (parts.length) {
-      const valids = parts.filter((p) => emailRegex.test(p));
-      if (valids.length) {
-        setEmails((prev) => {
-          const set = new Set(prev);
-          valids.forEach((v) => set.add(v));
-          return Array.from(set);
-        });
-      }
-    }
-    // Determine remainder (if user typed "a@b.com, pa" keep "pa" in the input)
-    const remainder = value.endsWith(",") ? "" : (value.split(",").pop() ?? "").trim();
-    setEmailInput(remainder);
-  };
+  // const addEmailsFromString = (value: string) => {
+  //   const parts = value.split(",").map((s) => s.trim()).filter(Boolean);
+  //   if (parts.length) {
+  //     const valids = parts.filter((p) => emailRegex.test(p));
+  //     if (valids.length) {
+  //       setEmails((prev) => {
+  //         const set = new Set(prev);
+  //         valids.forEach((v) => set.add(v));
+  //         return Array.from(set);
+  //       });
+  //     }
+  //   }
+  //   const remainder = value.endsWith(",") ? "" : (value.split(",").pop() ?? "").trim();
+  //   setEmailInput(remainder);
+  // };
 
-  const removeEmail = (index: number) => {
-    setEmails((prev) => prev.filter((_, i) => i !== index));
-  };
+  // const removeEmail = (index: number) => {
+  //   setEmails((prev) => prev.filter((_, i) => i !== index));
+  // };
 
-  // Whether there is at least one valid item ready to submit
   const hasValidInput = emailInput.trim() && emailRegex.test(emailInput.trim());
-  const canSubmit = emails.length > 0 || !!hasValidInput;
+  const canSubmit = !!hasValidInput;
+
+  const handleSubmit = async () => {
+    // Get the single email to send
+    const emailToSend = emailInput.trim();
+    if (!emailToSend || !emailRegex.test(emailToSend)) {
+      return;
+    }
+
+    try {
+      console.log('Sending invite for email:', emailToSend);
+      console.log('Session data:', {
+        user: session?.user,
+        hasToken: !!session?.accessToken,
+        tokenType: typeof session?.accessToken
+      });
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      if (session?.accessToken) {
+        headers['Authorization'] = `Bearer ${session.accessToken}`;
+        console.log('Added Authorization header with token');
+      } else {
+        console.log('No access token available in session');
+      }
+
+      const requestData = {
+        email: emailToSend
+      };
+
+      console.log(`Sending invite for email: ${emailToSend}`);
+      
+      const response = await fetch('/api/invite/send-invite', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(requestData),
+      });
+
+      console.log(`Response for ${emailToSend}:`, {
+        status: response.status,
+        ok: response.ok,
+        headers: Object.fromEntries(response.headers.entries())
+      });
+
+      const result = await response.json();
+      console.log(`API Response for ${emailToSend}:`, result);
+
+      if (response.ok && response.status === 200) {
+        // Success - show invite sent popup
+        setShowAddMember(false);
+        setShowInviteSent(true);
+        setEmailInput("");
+        // setEmails([]);
+      } else {
+        // Error - show failed popup
+        setShowAddMember(false);
+        setShowInviteFailed(true);
+        // Keep the email input for retry
+      }
+    } catch (error) {
+      console.error('Error sending invite:', error);
+      // Network error - show failed popup
+      setShowAddMember(false);
+      setShowInviteFailed(true);
+      // Keep the email input for retry
+    }
+  };
+
+  const handleTryAgain = () => {
+    setShowInviteFailed(false);
+    setShowAddMember(true);
+  };
 
   return (
     <AppLayout>
@@ -123,7 +209,7 @@ export default function ProfilePage() {
             width={20}
             height={20}
           />
-          <span>Add Member</span>
+          <span>Invite Member</span>
         </button>
       </div>
 
@@ -196,43 +282,46 @@ export default function ProfilePage() {
                 value={emailInput}
                 onChange={(e) => {
                   const val = e.target.value;
-                  if (val.includes(",")) {
-                    addEmailsFromString(val);
-                  } else {
-                    setEmailInput(val);
-                  }
+                  // if (val.includes(",")) {
+                  //   addEmailsFromString(val);
+                  // } else {
+                  //   setEmailInput(val);
+                  // }
+                  setEmailInput(val);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
-                    if (emailInput.trim()) addEmailsFromString(emailInput);
+                    handleSubmit();
                   }
                 }}
                 className="w-full rounded-lg border border-[#D4D4D4] bg-white px-3 py-3 text-sm outline-none text-[#000000] font-[500]"
               />
-              <p className="text-[15px] text-[#000000] font-[500]">Add a comma after an email address to add more.</p>
+              {/* <p className="text-[15px] text-[#000000] font-[500]">Add a comma after an email address to add more.</p> */}
 
               {/* Chips for added emails */}
-              {emails.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {emails.map((em, idx) => (
-                    <div key={`${em}-${idx}`} className="flex items-center gap-2 px-3 py-1 bg-[#E7E7E7] rounded-full text-sm text-[#000000] font-[500]">
-                      <span className="truncate max-w-[220px] text-black">{em}</span>
-                      <button
-                        type="button"
-                        onClick={(ev) => {
-                          ev.stopPropagation();
-                          removeEmail(idx);
-                        }}
-                        className="h-5 w-5 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-600"
-                        aria-label={`Remove ${em}`}
-                      >
-                        <Image src={CancelModal} alt="Cancel" width={15} height={15} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {/**
+               {emails.length > 0 && (
+                 <div className="mt-3 flex flex-wrap gap-2">
+                   {emails.map((em, idx) => (
+                     <div key={`${em}-${idx}`} className="flex items-center gap-2 px-3 py-1 bg-[#E7E7E7] rounded-full text-sm text-[#000000] font-[500]">
+                       <span className="truncate max-w-[220px] text-black">{em}</span>
+                       <button
+                         type="button"
+                         onClick={(ev) => {
+                           ev.stopPropagation();
+                           removeEmail(idx);
+                         }}
+                         className="h-5 w-5 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-600"
+                         aria-label={`Remove ${em}`}
+                       >
+                         <Image src={CancelModal} alt="Cancel" width={15} height={15} />
+                       </button>
+                     </div>
+                   ))}
+                 </div>
+               )}
+               */}
             </div>
 
             {/* Actions */}
@@ -241,19 +330,52 @@ export default function ProfilePage() {
                 type="button"
                 disabled={!canSubmit}
                 className={`w-full rounded-full px-4 py-3 text-sm font-medium ${canSubmit ? "bg-blue-primary text-white" : "bg-gray-300 text-gray-600 cursor-not-allowed"}`}
-                onClick={() => {
-                  // Ensure any remaining typed valid email is added before closing
-                  if (emailInput.trim() && emailRegex.test(emailInput.trim())) {
-                    addEmailsFromString(emailInput);
-                  }
-                  if (!canSubmit && emails.length === 0) return;
-                  // TODO: submit `emails` to your API here.
-                  setShowAddMember(false);
-                  setEmailInput("");
-                  setEmails([]);
-                }}
+                onClick={handleSubmit}
               >
                 Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showInviteSent && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/20" onClick={() => setShowInviteSent(false)} />
+          <div className="relative bg-white w-full max-w-[420px] rounded-xl shadow-xl border p-6 mx-4 text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
+              <span className="text-green-600 text-2xl">✓</span>
+            </div>
+            <h4 className="text-lg font-medium text-grey-dark">Invite sent</h4>
+            <p className="mt-2 text-sm text-grey-accent">Your invitation has been sent successfully.</p>
+            <div className="mt-6">
+              <button
+                type="button"
+                onClick={() => setShowInviteSent(false)}
+                className="w-full rounded-full px-4 py-3 text-sm font-medium bg-blue-primary text-white"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showInviteFailed && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/20" onClick={() => setShowInviteFailed(false)} />
+          <div className="relative bg-white w-full max-w-[420px] rounded-xl shadow-xl border p-6 mx-4 text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+              <span className="text-red-600 text-2xl">✗</span>
+            </div>
+            <h4 className="text-lg font-medium text-grey-dark">Invite not sent</h4>
+            <p className="mt-2 text-sm text-grey-accent">Failed to send invitation. Please try again.</p>
+            <div className="mt-6">
+              <button
+                type="button"
+                onClick={handleTryAgain}
+                className="w-full rounded-full px-4 py-3 text-sm font-medium bg-blue-primary text-white"
+              >
+                Try again
               </button>
             </div>
           </div>
