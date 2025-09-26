@@ -9,14 +9,6 @@ import { ArrowLeftIcon } from "@/public/assets/icons/arrow-left";
 import { Copy, DatabaseIcon } from "lucide-react";
 import Link from "next/link";
 
-// interface ChannelDetailsPageProps {
-//   params: Promise<{
-//     id: string;
-//     channel_name: string;
-//     inbound_balance: number;
-//   }>;
-// }
-
 type ChannelDetailsPageProps = {
   params: Promise<{ id: string }>;
 };
@@ -62,8 +54,7 @@ export default function ChannelDetailsPage({
       try {
         const res = await fetch(`/api/channels/${id}`);
         const json = await res.json();
-
-        console.log(json); // debug
+         console.log(json); // debug
 
         const channel = json.data; 
         
