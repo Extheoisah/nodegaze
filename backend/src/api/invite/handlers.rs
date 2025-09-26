@@ -237,7 +237,10 @@ pub async fn accept_invite(
         )
     })?;
 
-    tracing::info!("Invite accepted successfully for token: {}", accept_invite.token);
+    tracing::info!(
+        "Invite accepted successfully for token: {}",
+        accept_invite.token
+    );
     Ok(Json(ApiResponse::success(
         user,
         "Invite accepted successfully",

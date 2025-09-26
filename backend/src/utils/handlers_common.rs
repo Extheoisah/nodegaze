@@ -1,12 +1,14 @@
 use crate::api::common::ApiResponse;
 use crate::errors::LightningError;
+use crate::services::node_manager::{
+    ClnConnection, ClnNode, LightningClient, LndConnection, LndNode,
+};
+use crate::utils::NodeId;
 use crate::utils::jwt::{Claims, NodeCredentials};
 use axum::http::StatusCode;
 use bitcoin::secp256k1::PublicKey;
 use lightning::ln::PaymentHash;
 use std::str::FromStr;
-use crate::utils::NodeId;
-use crate::services::node_manager::{LndNode, LndConnection, ClnNode, ClnConnection, LightningClient};
 
 /// Extract credentials from claims
 pub fn extract_node_credentials(claims: &Claims) -> Result<&NodeCredentials, (StatusCode, String)> {
@@ -38,7 +40,7 @@ pub async fn create_node_client(
             })
             .await
             .map_err(|e| handle_node_error(e, "connect to LND node"))?;
-            
+
             Ok(Box::new(lnd_node))
         }
         "cln" => {
@@ -53,7 +55,7 @@ pub async fn create_node_client(
             })
             .await
             .map_err(|e| handle_node_error(e, "connect to CLN node"))?;
-            
+
             Ok(Box::new(cln_node))
         }
         _ => {

@@ -4,11 +4,11 @@
 //! or traits that do not fit into other specific domain modules.
 
 use crate::errors::LightningError;
+use bitcoin::Txid;
 use bitcoin::secp256k1::PublicKey;
-use bitcoin:: Txid;
 use expanduser::expanduser;
 use lightning::ln::features::NodeFeatures;
-use serde::{Deserialize, Serialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::{Display, Formatter};
@@ -322,13 +322,13 @@ pub enum InvoiceStatus {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub enum ChannelState {
-    Opening,  // funding tx not confirmed
+    Opening, // funding tx not confirmed
     #[default]
-    Active,   // normal / available
+    Active, // normal / available
     Disabled, // temporarily disabled
-    Closing,  // cooperative or force close initiated
-    Closed,   // channel is closed
-    Failed,   // failed or on-chain resolved
+    Closing, // cooperative or force close initiated
+    Closed,  // channel is closed
+    Failed,  // failed or on-chain resolved
 }
 
 /// The severity level of a log entry.
@@ -457,7 +457,7 @@ impl From<ShortChannelID> for u64 {
 
 impl FromStr for PaymentState {
     type Err = String;
-    
+
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         match input.to_lowercase().as_str() {
             "inflight" => Ok(PaymentState::Inflight),
@@ -491,7 +491,7 @@ impl PaymentState {
 
 impl FromStr for PaymentType {
     type Err = String;
-    
+
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         match input.to_lowercase().as_str() {
             "outgoing" => Ok(PaymentType::Outgoing),
@@ -523,7 +523,9 @@ impl PaymentType {
     }
 }
 
-pub fn deserialize_payment_types<'de, D>(deserializer: D) -> Result<Option<Vec<PaymentType>>, D::Error>
+pub fn deserialize_payment_types<'de, D>(
+    deserializer: D,
+) -> Result<Option<Vec<PaymentType>>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -539,8 +541,9 @@ where
                 .map(|payment_type| payment_type.trim())
                 .filter(|payment_type| !payment_type.is_empty())
                 .map(|payment_type| {
-                    PaymentType::from_str(payment_type)
-                        .map_err(|err| Error::custom(format!("Invalid payment type '{}': {}", payment_type, err)))
+                    PaymentType::from_str(payment_type).map_err(|err| {
+                        Error::custom(format!("Invalid payment type '{}': {}", payment_type, err))
+                    })
                 })
                 .collect::<Result<Vec<PaymentType>, _>>()?;
 
@@ -568,7 +571,7 @@ impl Display for InvoiceStatus {
 
 impl FromStr for InvoiceStatus {
     type Err = String;
-    
+
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         match input.to_lowercase().as_str() {
             "settled" => Ok(InvoiceStatus::Settled),
@@ -596,7 +599,7 @@ impl Display for ChannelState {
 
 impl FromStr for ChannelState {
     type Err = String;
-    
+
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         match input.to_lowercase().as_str() {
             "opening" => Ok(ChannelState::Opening),

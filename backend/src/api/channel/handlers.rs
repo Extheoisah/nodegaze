@@ -108,33 +108,33 @@ fn apply_channel_filters(
     }
 
     // Apply date range filter (for channel creation dates)
-if filter.from.is_some() || filter.to.is_some() {
-    if let Some(from_date) = filter.from {
-        channels.retain(|channel| {
-            channel
-                .last_update
-                .map(|creation_date| {
-                    // Safely convert i64 timestamp to u64 (clamping negative values to 0)
-                    let from_ts = from_date.timestamp().max(0) as u64;
-                    creation_date >= from_ts
-                })
-                .unwrap_or(false)
-        });
-    }
+    if filter.from.is_some() || filter.to.is_some() {
+        if let Some(from_date) = filter.from {
+            channels.retain(|channel| {
+                channel
+                    .last_update
+                    .map(|creation_date| {
+                        // Safely convert i64 timestamp to u64 (clamping negative values to 0)
+                        let from_ts = from_date.timestamp().max(0) as u64;
+                        creation_date >= from_ts
+                    })
+                    .unwrap_or(false)
+            });
+        }
 
-    if let Some(to_date) = filter.to {
-        channels.retain(|channel| {
-            channel
-                .last_update
-                .map(|creation_date| {
-                    // Safely convert i64 timestamp to u64 (negative becomes 0)
-                    let to_ts = to_date.timestamp().max(0) as u64;
-                    creation_date <= to_ts
-                })
-                .unwrap_or(false)
-        });
+        if let Some(to_date) = filter.to {
+            channels.retain(|channel| {
+                channel
+                    .last_update
+                    .map(|creation_date| {
+                        // Safely convert i64 timestamp to u64 (negative becomes 0)
+                        let to_ts = to_date.timestamp().max(0) as u64;
+                        creation_date <= to_ts
+                    })
+                    .unwrap_or(false)
+            });
+        }
     }
-}
 
     channels
 }

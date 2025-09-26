@@ -9,13 +9,13 @@ use crate::database::models::{
 use crate::errors::{ServiceError, ServiceResult};
 use crate::repositories::event_repository::EventRepository;
 use crate::repositories::notification_repository::NotificationRepository;
-use sqlx::SqlitePool;
-use uuid::Uuid;
-use validator::Validate;
+use chrono::Utc;
 use reqwest::Client;
 use serde_json::json;
-use chrono::Utc;
+use sqlx::SqlitePool;
 use std::time::Duration;
+use uuid::Uuid;
+use validator::Validate;
 
 pub struct NotificationService<'a> {
     /// Shared database connection pool
@@ -54,7 +54,8 @@ impl<'a> NotificationService<'a> {
         }
 
         // Validate URL based on notification type
-        self.validate_url(&create_request.url, &create_request.notification_type).await?;
+        self.validate_url(&create_request.url, &create_request.notification_type)
+            .await?;
 
         let create_notification = CreateNotification {
             id: Uuid::now_v7().to_string(),

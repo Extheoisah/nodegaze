@@ -2,7 +2,9 @@
 //!
 //! Handles all account-related business operations
 
-use crate::database::models::{Account, CreateAccount, CreateNewAccount, UserWithAccount, RoleAccessLevel};
+use crate::database::models::{
+    Account, CreateAccount, CreateNewAccount, RoleAccessLevel, UserWithAccount,
+};
 use crate::errors::{ServiceError, ServiceResult};
 use crate::repositories::account_repository::AccountRepository;
 use crate::repositories::role_repository::RoleRepository;
