@@ -64,7 +64,7 @@ pub async fn jwt_auth(mut request: Request, next: Next) -> Result<Response, Resp
         }
         Err(e) => {
             let error_response = ApiResponse::<()>::error(
-                format!("Invalid or expired token: {}", e),
+                format!("Invalid or expired token: {e}"),
                 "authentication_error",
                 None,
             );
@@ -163,7 +163,7 @@ pub async fn node_credentials_required(request: Request, next: Next) -> Result<R
 /// Macro to generate access level middleware functions
 macro_rules! create_access_level_middleware {
     ($fn_name:ident, $required_level:expr, $level_name:expr) => {
-        pub async fn $fn_name(mut request: Request, next: Next) -> Result<Response, Response> {
+        pub async fn $fn_name(request: Request, next: Next) -> Result<Response, Response> {
             let claims = request.extensions().get::<crate::utils::jwt::Claims>();
 
             let claims = match claims {

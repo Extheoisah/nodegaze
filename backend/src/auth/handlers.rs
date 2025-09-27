@@ -94,7 +94,7 @@ pub async fn me(
                 serde_json::to_string(&error_response).unwrap(),
             ));
         }
-        Err(e) => {
+        Err(_e) => {
             let error_response = ApiResponse::<()>::error("Database error", "database_error", None);
             return Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -138,7 +138,7 @@ pub async fn revoke_node_credentials(
                 serde_json::to_string(&error_response).unwrap(),
             ));
         }
-        Err(e) => {
+        Err(_e) => {
             let error_response = ApiResponse::<()>::error("Database error", "database_error", None);
             return Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -148,7 +148,7 @@ pub async fn revoke_node_credentials(
     };
 
     // Soft delete the credential
-    if let Err(e) = credential_repo.delete_credential(&credential.id).await {
+    if let Err(_e) = credential_repo.delete_credential(&credential.id).await {
         let error_response =
             ApiResponse::<()>::error("Failed to revoke credentials", "database_error", None);
         return Err((
@@ -160,7 +160,7 @@ pub async fn revoke_node_credentials(
     // Generate new token without node credentials
     let jwt_utils = match crate::utils::jwt::JwtUtils::new() {
         Ok(utils) => utils,
-        Err(e) => {
+        Err(_e) => {
             let error_response =
                 ApiResponse::<()>::error("JWT configuration error", "configuration_error", None);
             return Err((
@@ -178,7 +178,7 @@ pub async fn revoke_node_credentials(
         None, // No node credentials
     ) {
         Ok(token) => token,
-        Err(e) => {
+        Err(_e) => {
             let error_response =
                 ApiResponse::<()>::error("Token generation failed", "token_error", None);
             return Err((

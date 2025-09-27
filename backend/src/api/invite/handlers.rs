@@ -46,7 +46,7 @@ pub async fn create_invite(
     let invite = service.create_invite(payload, user).await.map_err(|e| {
         tracing::error!("Failed to create invite for user {}: {}", user_id, e);
         let error_response = ApiResponse::<()>::error(
-            format!("Failed to create invite: {}", e),
+            format!("Failed to create invite: {e}"),
             "invite_creation_error",
             None,
         );
@@ -96,7 +96,7 @@ pub async fn get_invite_by_id(
         .map_err(|e| {
             tracing::error!("Failed to find invite {}: {}", id, e);
             let error_response = ApiResponse::<()>::error(
-                format!("Failed to find invite: {}", e),
+                format!("Failed to find invite: {e}"),
                 "invite_not_found",
                 None,
             );
@@ -145,7 +145,7 @@ pub async fn get_invites(
         .map_err(|e| {
             tracing::error!("No invites found for account {}: {}", user.account_id, e);
             let error_response = ApiResponse::<()>::error(
-                format!("No invites found: {}", e),
+                format!("No invites found: {e}"),
                 "invites_not_found",
                 None,
             );
@@ -192,7 +192,7 @@ pub async fn resend_invite(
     let invite = service.resend_invite(&id, &user).await.map_err(|e| {
         tracing::error!("Failed to resend invite {} for user {}: {}", id, user_id, e);
         let error_response = ApiResponse::<()>::error(
-            format!("Failed to resend invite: {}", e),
+            format!("Failed to resend invite: {e}"),
             "invite_resend_error",
             None,
         );
@@ -227,7 +227,7 @@ pub async fn accept_invite(
             e
         );
         let error_response = ApiResponse::<()>::error(
-            format!("Failed to accept invitation: {}", e),
+            format!("Failed to accept invitation: {e}"),
             "invite_accept_error",
             None,
         );

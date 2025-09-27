@@ -103,7 +103,7 @@ impl std::str::FromStr for RoleAccessLevel {
         match s {
             "Read" => Ok(RoleAccessLevel::Read),
             "ReadWrite" => Ok(RoleAccessLevel::ReadWrite),
-            _ => Err(format!("Invalid role access level: {}", s)),
+            _ => Err(format!("Invalid role access level: {s}")),
         }
     }
 }
@@ -281,7 +281,7 @@ impl std::str::FromStr for InviteStatus {
         match s {
             "Pending" => Ok(InviteStatus::Pending),
             "Accepted" => Ok(InviteStatus::Accepted),
-            _ => Err(format!("Invalid invite status: {}", s)),
+            _ => Err(format!("Invalid invite status: {s}")),
         }
     }
 }
@@ -392,7 +392,7 @@ impl std::str::FromStr for NotificationType {
         match s.to_lowercase().as_str() {
             "webhook" => Ok(NotificationType::Webhook),
             "discord" => Ok(NotificationType::Discord),
-            _ => Err(format!("Invalid notification type: {}", s)),
+            _ => Err(format!("Invalid notification type: {s}")),
         }
     }
 }
@@ -519,7 +519,7 @@ impl std::str::FromStr for EventType {
             "payment_failed" => Ok(EventType::PaymentFailed),
             "node_connected" => Ok(EventType::NodeConnected),
             "node_disconnected" => Ok(EventType::NodeDisconnected),
-            _ => Err(format!("Invalid event type: {}", s)),
+            _ => Err(format!("Invalid event type: {s}")),
         }
     }
 }
@@ -549,7 +549,7 @@ impl std::str::FromStr for EventSeverity {
             "info" => Ok(EventSeverity::Info),
             "warning" => Ok(EventSeverity::Warning),
             "critical" => Ok(EventSeverity::Critical),
-            _ => Err(format!("Invalid event severity: {}", s)),
+            _ => Err(format!("Invalid event severity: {s}")),
         }
     }
 }

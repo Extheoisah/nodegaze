@@ -218,7 +218,7 @@ impl<'a> EventService<'a> {
                 EventType::ChannelOpened,
                 EventSeverity::Info,
                 "Channel Opened".to_string(),
-                format!("New channel opened with {}", remote_pubkey),
+                format!("New channel opened with {remote_pubkey}"),
                 HashMap::from([
                     ("active".to_string(), Value::Bool(*active)),
                     ("channel_id".to_string(), Value::Number((*chan_id).into())),
@@ -266,7 +266,7 @@ impl<'a> EventService<'a> {
                 EventType::ChannelClosed,
                 EventSeverity::Warning,
                 "Channel Closed".to_string(),
-                format!("Channel closed with {}", remote_pubkey),
+                format!("Channel closed with {remote_pubkey}"),
                 HashMap::from([
                     ("chan_id".to_string(), Value::Number((*chan_id).into())),
                     (
@@ -321,7 +321,7 @@ impl<'a> EventService<'a> {
                 EventType::InvoiceCreated,
                 EventSeverity::Info,
                 "Invoice Created".to_string(),
-                format!("New invoice created for {} msat", value_msat),
+                format!("New invoice created for {value_msat} msat"),
                 HashMap::from([
                     ("preimage".to_string(), Value::String(hex::encode(preimage))),
                     ("hash".to_string(), Value::String(hex::encode(hash))),
@@ -353,7 +353,7 @@ impl<'a> EventService<'a> {
                 EventType::InvoiceSettled,
                 EventSeverity::Info,
                 "Invoice Settled".to_string(),
-                format!("Invoice settled for {} msat", value_msat),
+                format!("Invoice settled for {value_msat} msat"),
                 HashMap::from([
                     ("preimage".to_string(), Value::String(hex::encode(preimage))),
                     ("hash".to_string(), Value::String(hex::encode(hash))),
@@ -385,7 +385,7 @@ impl<'a> EventService<'a> {
                 EventType::InvoiceCancelled,
                 EventSeverity::Warning,
                 "Invoice Cancelled".to_string(),
-                format!("Invoice cancelled for {} msat", value_msat),
+                format!("Invoice cancelled for {value_msat} msat"),
                 HashMap::from([
                     ("preimage".to_string(), Value::String(hex::encode(preimage))),
                     ("hash".to_string(), Value::String(hex::encode(hash))),
@@ -417,7 +417,7 @@ impl<'a> EventService<'a> {
                 EventType::InvoiceAccepted,
                 EventSeverity::Info,
                 "Invoice Accepted".to_string(),
-                format!("Invoice accepted for {} msat", value_msat),
+                format!("Invoice accepted for {value_msat} msat"),
                 HashMap::from([
                     ("preimage".to_string(), Value::String(hex::encode(preimage))),
                     ("hash".to_string(), Value::String(hex::encode(hash))),

@@ -26,7 +26,7 @@ pub async fn get_channel_info(
     let node_credentials = extract_node_credentials(&claims)?;
     let public_key = parse_public_key(&node_credentials.node_id)?;
 
-    let node_client = create_node_client(&node_credentials, public_key).await?;
+    let node_client = create_node_client(node_credentials, public_key).await?;
 
     let channel_details = node_client
         .get_channel_info(&scid)
@@ -52,7 +52,7 @@ pub async fn list_channels(
     let node_credentials = extract_node_credentials(&claims)?;
     let public_key = parse_public_key(&node_credentials.node_id)?;
 
-    let node_client = create_node_client(&node_credentials, public_key).await?;
+    let node_client = create_node_client(node_credentials, public_key).await?;
 
     let channels = node_client
         .list_channels()
@@ -160,7 +160,7 @@ async fn process_channels_with_filters(
 fn parse_short_channel_id(channel_id: &str) -> Result<ShortChannelID, (StatusCode, String)> {
     ShortChannelID::from_str(channel_id).map_err(|e| {
         let error_response = ApiResponse::<()>::error(
-            format!("Invalid channel ID format: {}", e),
+            format!("Invalid channel ID format: {e}"),
             "invalid_channel_id",
             None,
         );

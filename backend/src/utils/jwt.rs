@@ -55,7 +55,7 @@ impl JwtUtils {
     /// Create a new JwtUtils instance with keys from environment
     pub fn new() -> Result<Self, ServiceError> {
         let config = crate::config::Config::from_env()
-            .map_err(|e| ServiceError::validation(format!("Config error: {}", e)))?;
+            .map_err(|e| ServiceError::validation(format!("Config error: {e}")))?;
 
         let encoding_key = EncodingKey::from_secret(config.jwt_secret.as_bytes());
         let decoding_key = DecodingKey::from_secret(config.jwt_secret.as_bytes());
@@ -81,7 +81,7 @@ impl JwtUtils {
     ) -> Result<String, ServiceError> {
         // Get expires_in from config
         let config = Config::from_env()
-            .map_err(|e| ServiceError::validation(format!("Config error: {}", e)))?;
+            .map_err(|e| ServiceError::validation(format!("Config error: {e}")))?;
         let expires_in = config.jwt_expires_in_seconds;
 
         let now = Utc::now();
@@ -98,14 +98,14 @@ impl JwtUtils {
         };
 
         encode(&Header::default(), &claims, &self.encoding_key)
-            .map_err(|e| ServiceError::validation(format!("Token generation failed: {}", e)))
+            .map_err(|e| ServiceError::validation(format!("Token generation failed: {e}")))
     }
 
     /// Validate and decode a JWT token
     pub fn validate_token(&self, token: &str) -> Result<Claims, ServiceError> {
         decode::<Claims>(token, &self.decoding_key, &self.validation)
             .map(|token_data| token_data.claims)
-            .map_err(|e| ServiceError::validation(format!("Token validation failed: {}", e)))
+            .map_err(|e| ServiceError::validation(format!("Token validation failed: {e}")))
     }
 
     /// Generate a refresh token (longer expiration)
@@ -127,9 +127,8 @@ impl JwtUtils {
             iat: now.timestamp() as usize,
         };
 
-        encode(&Header::default(), &claims, &self.encoding_key).map_err(|e| {
-            ServiceError::validation(format!("Refresh token generation failed: {}", e))
-        })
+        encode(&Header::default(), &claims, &self.encoding_key)
+            .map_err(|e| ServiceError::validation(format!("Refresh token generation failed: {e}")))
     }
 }
 

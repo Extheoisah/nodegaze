@@ -232,7 +232,7 @@ impl<'a> NotificationService<'a> {
             .timeout(Duration::from_secs(5))
             .build()
             .map_err(|err| ServiceError::InternalError {
-                message: format!("HTTP client setup failed: {}", err),
+                message: format!("HTTP client setup failed: {err}"),
             })?;
 
         let response = client
@@ -247,7 +247,7 @@ impl<'a> NotificationService<'a> {
                 message: match err {
                     err if err.is_timeout() => "Webhook timeout after 5 seconds".into(),
                     err if err.is_connect() => "Could not connect to webhook server".into(),
-                    _ => format!("Webhook communication failed: {}", err),
+                    _ => format!("Webhook communication failed: {err}"),
                 },
             })?;
 

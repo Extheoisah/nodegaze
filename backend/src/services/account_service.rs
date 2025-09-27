@@ -154,7 +154,7 @@ impl<'a> AccountService<'a> {
 
         // Create the admin user for the account
         let password_hash = bcrypt::hash(&create_account.password, bcrypt::DEFAULT_COST)
-            .map_err(|e| ServiceError::validation(format!("Password hashing failed: {}", e)))?;
+            .map_err(|e| ServiceError::validation(format!("Password hashing failed: {e}")))?;
 
         let user_id = Uuid::now_v7().to_string();
         // Insert the user into the database
@@ -236,7 +236,7 @@ impl<'a> AccountService<'a> {
             .name
             .chars()
             .next()
-            .map_or(false, |c| c.is_numeric() || !c.is_alphanumeric())
+            .is_some_and(|c| c.is_numeric() || !c.is_alphanumeric())
         {
             return Err(ServiceError::validation(
                 "Account name must start with a letter",

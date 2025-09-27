@@ -139,8 +139,8 @@ pub async fn get_notification_events(
         .get_events_for_notification(
             &id,
             account_id,
-            Some(pagination.limit() as i64),
-            Some(pagination.offset() as i64),
+            Some(pagination.limit()),
+            Some(pagination.offset()),
         )
         .await
     {

@@ -76,7 +76,7 @@ pub async fn create_node_client(
 pub fn parse_payment_hash(payment_hash: &str) -> Result<PaymentHash, (StatusCode, String)> {
     let payment_hash_bytes = hex::decode(payment_hash).map_err(|e| {
         let error_response = ApiResponse::<()>::error(
-            format!("Invalid payment hash format: {}", e),
+            format!("Invalid payment hash format: {e}"),
             "invalid_payment_hash",
             None,
         );
@@ -107,7 +107,7 @@ pub fn parse_payment_hash(payment_hash: &str) -> Result<PaymentHash, (StatusCode
 pub fn parse_public_key(node_id: &str) -> Result<PublicKey, (StatusCode, String)> {
     PublicKey::from_str(node_id).map_err(|e| {
         let error_response = ApiResponse::<()>::error(
-            format!("Invalid node public key: {}", e),
+            format!("Invalid node public key: {e}"),
             "invalid_public_key",
             None,
         );
@@ -165,8 +165,8 @@ pub fn extract_cln_tls_components(
 pub fn handle_node_error(e: LightningError, operation: &str) -> (StatusCode, String) {
     tracing::error!("{} failed: {}", operation, e);
     let error_response = ApiResponse::<()>::error(
-        format!("Failed to {}: {}", operation, e),
-        &format!("{}_error", operation.replace(' ', "_")),
+        format!("Failed to {operation}: {e}"),
+        format!("{}_error", operation.replace(' ', "_")),
         None,
     );
     (
