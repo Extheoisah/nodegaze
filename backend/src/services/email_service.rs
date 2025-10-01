@@ -5,6 +5,7 @@ use lettre::transport::smtp::authentication::Credentials;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use std::str::FromStr;
 
+#[derive(Clone)]
 pub struct EmailService {
     mailer: AsyncSmtpTransport<Tokio1Executor>,
     config: EmailConfig,
@@ -15,10 +16,11 @@ impl EmailService {
     pub fn new(config: EmailConfig) -> ServiceResult<Self> {
         let creds = Credentials::new(config.smtp_username.clone(), config.smtp_password.clone());
 
-        let mailer = AsyncSmtpTransport::<Tokio1Executor>::relay(&config.smtp_host)
-            .map_err(|e| ServiceError::validation(format!("Invalid SMTP host: {e}")))?
+        let mailer = AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_host)
+            .map_err(|e| ServiceError::validation(&format!("Invalid SMTP host: {}", e)))?
             .port(config.smtp_port)
             .credentials(creds)
+            .timeout(Some(std::time::Duration::from_secs(30)))
             .build();
 
         Ok(Self { mailer, config })
