@@ -3,14 +3,14 @@
 //! These functions process requests for payment data and return payment-specific information.
 
 use crate::utils::handlers_common::{
-    create_node_client, extract_node_credentials, handle_node_error,
-    parse_payment_hash, parse_public_key,
+    create_node_client, extract_node_credentials, handle_node_error, parse_payment_hash,
+    parse_public_key,
 };
 use crate::utils::jwt::Claims;
 use crate::{
     api::common::{
-        ApiResponse, NumericOperator, PaginatedData, PaginationFilter,
-        PaginationMeta, apply_pagination, validation_error_response, deserialize_states
+        ApiResponse, NumericOperator, PaginatedData, PaginationFilter, PaginationMeta,
+        apply_pagination, deserialize_states, validation_error_response,
     },
     utils::{PaymentDetails, PaymentState, PaymentSummary, PaymentType, deserialize_payment_types},
 };
@@ -19,9 +19,9 @@ use axum::{
     extract::{Extension, Path, Query},
     http::StatusCode,
 };
-use validator::Validate;
-use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use validator::Validate;
 
 /// Handler for getting payment details
 #[axum::debug_handler]
@@ -33,7 +33,7 @@ pub async fn get_payment_details(
     let node_credentials = extract_node_credentials(&claims)?;
     let public_key = parse_public_key(&node_credentials.node_id)?;
 
-    let node_client = create_node_client(&node_credentials, public_key).await?;
+    let node_client = create_node_client(node_credentials, public_key).await?;
 
     let payment_details = node_client
         .get_payment_details(&payment_hash)
@@ -59,7 +59,7 @@ pub async fn list_payments(
     let node_credentials = extract_node_credentials(&claims)?;
     let public_key = parse_public_key(&node_credentials.node_id)?;
 
-    let node_client = create_node_client(&node_credentials, public_key).await?;
+    let node_client = create_node_client(node_credentials, public_key).await?;
 
     let all_payments = node_client
         .list_payments()
@@ -128,11 +128,9 @@ fn apply_payment_filters(
     // Apply payment type filter
     if let Some(filter_payment_types) = &filter.payment_types {
         payments.retain(|payment| {
-            filter_payment_types
-                .iter()
-                .any(|pt| {
-                    payment.payment_type.as_str().to_lowercase() == pt.as_str().to_lowercase()
-                })
+            filter_payment_types.iter().any(|pt| {
+                payment.payment_type.as_str().to_lowercase() == pt.as_str().to_lowercase()
+            })
         });
     }
 

@@ -197,7 +197,7 @@ impl<'a> InviteService<'a> {
             .send_invite_email(
                 &invite.invitee_email,
                 None,
-                &invite.token.as_str(),
+                invite.token.as_str(),
                 &inviter.username,
                 &account.name,
             )
@@ -220,7 +220,7 @@ impl<'a> InviteService<'a> {
 
         // Verify that the invite belongs to the account
         if invite.account_id != user.account_id {
-            return Err(ServiceError::not_found("Invite", &invite_id.to_string()));
+            return Err(ServiceError::not_found("Invite", invite_id.to_string()));
         }
 
         let expires_at = Utc::now() + Duration::days(7);
@@ -254,7 +254,7 @@ impl<'a> InviteService<'a> {
             return Err(ServiceError::not_found("Invitation not resent", &invite.id));
         }
 
-        self.try_send_invite_email(&invite, &user).await;
+        self.try_send_invite_email(&invite, user).await;
         Ok(invite)
     }
 
@@ -367,7 +367,7 @@ impl<'a> InviteService<'a> {
         let role = role.unwrap();
 
         let password_hash = bcrypt::hash(&accept_invite.password, bcrypt::DEFAULT_COST)
-            .map_err(|e| ServiceError::validation(format!("Password hashing failed: {}", e)))?;
+            .map_err(|e| ServiceError::validation(format!("Password hashing failed: {e}")))?;
 
         let user_id = Uuid::now_v7().to_string();
         // Create the user in the database

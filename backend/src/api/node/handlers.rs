@@ -77,7 +77,7 @@ pub async fn authenticate_node(
                 Err(e) => {
                     tracing::error!("Failed to authenticate LND node: {}", e);
                     let error_response = ApiResponse::<()>::error(
-                        format!("LND authentication failed: {}", e),
+                        format!("LND authentication failed: {e}"),
                         "node_authentication_error",
                         None,
                     );
@@ -129,7 +129,7 @@ pub async fn authenticate_node(
                 Err(e) => {
                     tracing::error!("Failed to authenticate CLN node: {}", e);
                     let error_response = ApiResponse::<()>::error(
-                        format!("CLN authentication failed: {}", e),
+                        format!("CLN authentication failed: {e}"),
                         "node_authentication_error",
                         None,
                     );
@@ -187,13 +187,13 @@ async fn store_node_credentials(
     if let Some(existing_credential) = credential_repo
         .get_credential_by_user_id(&claims.sub)
         .await
-        .map_err(|e| format!("Database error: {}", e))?
+        .map_err(|e| format!("Database error: {e}"))?
     {
         // Delete old credential (soft delete)
         credential_repo
             .delete_credential(&existing_credential.id)
             .await
-            .map_err(|e| format!("Failed to delete old credential: {}", e))?;
+            .map_err(|e| format!("Failed to delete old credential: {e}"))?;
     }
 
     // Extract connection details based on type
@@ -238,7 +238,7 @@ async fn store_node_credentials(
     let credential = credential_repo
         .create_credential(create_credential)
         .await
-        .map_err(|e| format!("Failed to store credential: {}", e))?;
+        .map_err(|e| format!("Failed to store credential: {e}"))?;
 
     Ok(credential.id)
 }
@@ -258,15 +258,17 @@ pub async fn get_node_info_jwt(
     // Create connection request based on node type
     match node_credentials.node_type.as_str() {
         "lnd" => {
-            let lnd_conn =
-                LndConnection {
-                    id: NodeId::PublicKey(node_credentials.node_id.parse().map_err(|e| {
-                        (StatusCode::BAD_REQUEST, format!("Invalid node ID: {}", e))
-                    })?),
-                    address: node_credentials.address.clone(),
-                    macaroon: node_credentials.macaroon.clone(),
-                    cert: node_credentials.tls_cert.clone(),
-                };
+            let lnd_conn = LndConnection {
+                id: NodeId::PublicKey(
+                    node_credentials
+                        .node_id
+                        .parse()
+                        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid node ID: {e}")))?,
+                ),
+                address: node_credentials.address.clone(),
+                macaroon: node_credentials.macaroon.clone(),
+                cert: node_credentials.tls_cert.clone(),
+            };
 
             match LndNode::new(lnd_conn).await {
                 Ok(lnd_node) => Ok(Json(lnd_node.info)),
@@ -274,7 +276,7 @@ pub async fn get_node_info_jwt(
                     tracing::error!("Failed to connect to LND node: {}", e);
                     Err((
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("LND connection failed: {}", e),
+                        format!("LND connection failed: {e}"),
                     ))
                 }
             }
@@ -301,16 +303,18 @@ pub async fn get_node_info_jwt(
                 )
             })?;
 
-            let cln_conn =
-                ClnConnection {
-                    id: NodeId::PublicKey(node_credentials.node_id.parse().map_err(|e| {
-                        (StatusCode::BAD_REQUEST, format!("Invalid node ID: {}", e))
-                    })?),
-                    address: node_credentials.address.clone(),
-                    ca_cert: ca_cert.clone(),
-                    client_cert: client_cert.clone(),
-                    client_key: client_key.clone(),
-                };
+            let cln_conn = ClnConnection {
+                id: NodeId::PublicKey(
+                    node_credentials
+                        .node_id
+                        .parse()
+                        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid node ID: {e}")))?,
+                ),
+                address: node_credentials.address.clone(),
+                ca_cert: ca_cert.clone(),
+                client_cert: client_cert.clone(),
+                client_key: client_key.clone(),
+            };
 
             match ClnNode::new(cln_conn).await {
                 Ok(cln_node) => Ok(Json(cln_node.info)),
@@ -318,7 +322,7 @@ pub async fn get_node_info_jwt(
                     tracing::error!("Failed to connect to CLN node: {}", e);
                     Err((
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("CLN connection failed: {}", e),
+                        format!("CLN connection failed: {e}"),
                     ))
                 }
             }

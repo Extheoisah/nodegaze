@@ -3,15 +3,12 @@
 //! Handles all account-related business operations
 
 use crate::api::common::PaginationFilter;
-use crate::database::models::{CreateNewUser, CreateUser, Role, RoleAccessLevel, User};
+use crate::database::models::{RoleAccessLevel, User};
 use crate::errors::{ServiceError, ServiceResult};
-use crate::repositories::account_repository::AccountRepository;
 use crate::repositories::role_repository::RoleRepository;
 use crate::repositories::user_repository::UserRepository;
 use bcrypt::{DEFAULT_COST, hash, verify};
 use sqlx::SqlitePool;
-use uuid::Uuid;
-use validator::Validate;
 
 pub struct UserService<'a> {
     /// Shared database connection pool
@@ -39,7 +36,7 @@ impl<'a> UserService<'a> {
     /// Returns `ServiceError` if hashing fails
     fn hash_password(&self, password: &str) -> ServiceResult<String> {
         hash(password, DEFAULT_COST)
-            .map_err(|e| ServiceError::validation(format!("Password hashing failed: {}", e)))
+            .map_err(|e| ServiceError::validation(format!("Password hashing failed: {e}")))
     }
 
     /// Function to verify a password against the stored hash
@@ -55,7 +52,7 @@ impl<'a> UserService<'a> {
     /// Returns `ServiceError` if verification process fails
     fn verify_password(&self, password: &str, hash: &str) -> ServiceResult<bool> {
         verify(password, hash)
-            .map_err(|e| ServiceError::validation(format!("Password verification failed: {}", e)))
+            .map_err(|e| ServiceError::validation(format!("Password verification failed: {e}")))
     }
 
     /// Retrieves a user by ID with existence verification.
@@ -192,9 +189,6 @@ impl<'a> UserService<'a> {
             }
             RoleAccessLevel::ReadWrite => {
                 user.role_access_level = RoleAccessLevel::Read;
-            }
-            _ => {
-                user.role_access_level = RoleAccessLevel::ReadWrite;
             }
         }
 

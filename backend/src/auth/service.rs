@@ -127,7 +127,7 @@ impl<'a> AuthService<'a> {
             id: user_id,
             username: user.username,
             email: user.email,
-            account_id: account_id,
+            account_id,
             account_name: account.name,
             role: role_name,
             has_node_credentials,

@@ -192,7 +192,7 @@ where
                 .filter(|state| !state.is_empty())
                 .map(|state| {
                     T::from_str(state)
-                        .map_err(|e| Error::custom(format!("Invalid state '{}': {}", state, e)))
+                        .map_err(|e| Error::custom(format!("Invalid state '{state}': {e}")))
                 })
                 .collect::<Result<Vec<T>, _>>()?;
 
@@ -349,12 +349,12 @@ pub fn service_error_to_http(error: ServiceError) -> (StatusCode, String) {
         ServiceError::NotFound { entity, identifier } => (
             StatusCode::NOT_FOUND,
             "not_found",
-            format!("{} '{}' not found", entity, identifier),
+            format!("{entity} '{identifier}' not found"),
         ),
         ServiceError::AlreadyExists { entity, identifier } => (
             StatusCode::CONFLICT,
             "already_exists",
-            format!("{} '{}' already exists", entity, identifier),
+            format!("{entity} '{identifier}' already exists"),
         ),
         ServiceError::PermissionDenied { message } => {
             (StatusCode::FORBIDDEN, "permission_denied", message)

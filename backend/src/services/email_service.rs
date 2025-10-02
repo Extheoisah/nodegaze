@@ -16,7 +16,7 @@ impl EmailService {
         let creds = Credentials::new(config.smtp_username.clone(), config.smtp_password.clone());
 
         let mailer = AsyncSmtpTransport::<Tokio1Executor>::relay(&config.smtp_host)
-            .map_err(|e| ServiceError::validation(&format!("Invalid SMTP host: {}", e)))?
+            .map_err(|e| ServiceError::validation(format!("Invalid SMTP host: {e}")))?
             .port(config.smtp_port)
             .credentials(creds)
             .build();
@@ -33,7 +33,7 @@ impl EmailService {
         inviter_name: &str,
         account_name: &str,
     ) -> ServiceResult<()> {
-        let subject = format!("You've been invited to join {}", account_name);
+        let subject = format!("You've been invited to join {account_name}");
         let invite_url = format!(
             "{}/accept-invite?token={}",
             self.config.base_url, invite_token
@@ -69,10 +69,10 @@ impl EmailService {
             "{} <{}>",
             self.config.from_name, self.config.from_email
         ))
-        .map_err(|e| ServiceError::validation(&format!("Invalid from email: {}", e)))?;
+        .map_err(|e| ServiceError::validation(format!("Invalid from email: {e}")))?;
 
         let to_mailbox = Mailbox::from_str(to_email)
-            .map_err(|e| ServiceError::validation(&format!("Invalid recipient email: {}", e)))?;
+            .map_err(|e| ServiceError::validation(format!("Invalid recipient email: {e}")))?;
 
         let email = Message::builder()
             .from(from_mailbox)
@@ -91,12 +91,12 @@ impl EmailService {
                             .body(html_content.to_string()),
                     ),
             )
-            .map_err(|e| ServiceError::validation(&format!("Failed to build email: {}", e)))?;
+            .map_err(|e| ServiceError::validation(format!("Failed to build email: {e}")))?;
 
         self.mailer
             .send(email)
             .await
-            .map_err(|e| ServiceError::validation(&format!("Failed to send email: {}", e)))?;
+            .map_err(|e| ServiceError::validation(format!("Failed to send email: {e}")))?;
 
         Ok(())
     }

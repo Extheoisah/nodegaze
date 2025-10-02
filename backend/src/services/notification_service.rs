@@ -9,13 +9,13 @@ use crate::database::models::{
 use crate::errors::{ServiceError, ServiceResult};
 use crate::repositories::event_repository::EventRepository;
 use crate::repositories::notification_repository::NotificationRepository;
-use sqlx::SqlitePool;
-use uuid::Uuid;
-use validator::Validate;
+use chrono::Utc;
 use reqwest::Client;
 use serde_json::json;
-use chrono::Utc;
+use sqlx::SqlitePool;
 use std::time::Duration;
+use uuid::Uuid;
+use validator::Validate;
 
 pub struct NotificationService<'a> {
     /// Shared database connection pool
@@ -54,7 +54,8 @@ impl<'a> NotificationService<'a> {
         }
 
         // Validate URL based on notification type
-        self.validate_url(&create_request.url, &create_request.notification_type).await?;
+        self.validate_url(&create_request.url, &create_request.notification_type)
+            .await?;
 
         let create_notification = CreateNotification {
             id: Uuid::now_v7().to_string(),
@@ -231,7 +232,7 @@ impl<'a> NotificationService<'a> {
             .timeout(Duration::from_secs(5))
             .build()
             .map_err(|err| ServiceError::InternalError {
-                message: format!("HTTP client setup failed: {}", err),
+                message: format!("HTTP client setup failed: {err}"),
             })?;
 
         let response = client
@@ -246,7 +247,7 @@ impl<'a> NotificationService<'a> {
                 message: match err {
                     err if err.is_timeout() => "Webhook timeout after 5 seconds".into(),
                     err if err.is_connect() => "Could not connect to webhook server".into(),
-                    _ => format!("Webhook communication failed: {}", err),
+                    _ => format!("Webhook communication failed: {err}"),
                 },
             })?;
 

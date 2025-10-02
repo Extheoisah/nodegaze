@@ -4,7 +4,7 @@
 //! or relevant services, and return user-specific information.
 
 use crate::api::common::ApiResponse;
-use crate::database::models::{User, UserWithAccount};
+use crate::database::models::User;
 use crate::services::user_service::UserService;
 use crate::utils::jwt::Claims;
 use axum::{
@@ -26,7 +26,7 @@ pub async fn get_user_by_id(
 
     let user_service = UserService::new(&pool);
     let user = user_service
-        .get_user_required(&id.as_str())
+        .get_user_required(id.as_str())
         .await
         .map_err(|e| {
             tracing::error!("User not found for ID {}: {}", id, e);

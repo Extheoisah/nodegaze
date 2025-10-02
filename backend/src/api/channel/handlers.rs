@@ -26,7 +26,7 @@ pub async fn get_channel_info(
     let node_credentials = extract_node_credentials(&claims)?;
     let public_key = parse_public_key(&node_credentials.node_id)?;
 
-    let node_client = create_node_client(&node_credentials, public_key).await?;
+    let node_client = create_node_client(node_credentials, public_key).await?;
 
     let channel_details = node_client
         .get_channel_info(&scid)
@@ -52,7 +52,7 @@ pub async fn list_channels(
     let node_credentials = extract_node_credentials(&claims)?;
     let public_key = parse_public_key(&node_credentials.node_id)?;
 
-    let node_client = create_node_client(&node_credentials, public_key).await?;
+    let node_client = create_node_client(node_credentials, public_key).await?;
 
     let channels = node_client
         .list_channels()
@@ -108,33 +108,33 @@ fn apply_channel_filters(
     }
 
     // Apply date range filter (for channel creation dates)
-if filter.from.is_some() || filter.to.is_some() {
-    if let Some(from_date) = filter.from {
-        channels.retain(|channel| {
-            channel
-                .last_update
-                .map(|creation_date| {
-                    // Safely convert i64 timestamp to u64 (clamping negative values to 0)
-                    let from_ts = from_date.timestamp().max(0) as u64;
-                    creation_date >= from_ts
-                })
-                .unwrap_or(false)
-        });
-    }
+    if filter.from.is_some() || filter.to.is_some() {
+        if let Some(from_date) = filter.from {
+            channels.retain(|channel| {
+                channel
+                    .last_update
+                    .map(|creation_date| {
+                        // Safely convert i64 timestamp to u64 (clamping negative values to 0)
+                        let from_ts = from_date.timestamp().max(0) as u64;
+                        creation_date >= from_ts
+                    })
+                    .unwrap_or(false)
+            });
+        }
 
-    if let Some(to_date) = filter.to {
-        channels.retain(|channel| {
-            channel
-                .last_update
-                .map(|creation_date| {
-                    // Safely convert i64 timestamp to u64 (negative becomes 0)
-                    let to_ts = to_date.timestamp().max(0) as u64;
-                    creation_date <= to_ts
-                })
-                .unwrap_or(false)
-        });
+        if let Some(to_date) = filter.to {
+            channels.retain(|channel| {
+                channel
+                    .last_update
+                    .map(|creation_date| {
+                        // Safely convert i64 timestamp to u64 (negative becomes 0)
+                        let to_ts = to_date.timestamp().max(0) as u64;
+                        creation_date <= to_ts
+                    })
+                    .unwrap_or(false)
+            });
+        }
     }
-}
 
     channels
 }
@@ -160,7 +160,7 @@ async fn process_channels_with_filters(
 fn parse_short_channel_id(channel_id: &str) -> Result<ShortChannelID, (StatusCode, String)> {
     ShortChannelID::from_str(channel_id).map_err(|e| {
         let error_response = ApiResponse::<()>::error(
-            format!("Invalid channel ID format: {}", e),
+            format!("Invalid channel ID format: {e}"),
             "invalid_channel_id",
             None,
         );

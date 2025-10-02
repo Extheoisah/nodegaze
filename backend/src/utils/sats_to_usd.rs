@@ -66,12 +66,7 @@ impl PriceConverter {
             }
             Err(e) => {
                 // Fallback to stale cache if available
-                self.cache
-                    .read()
-                    .await
-                    .as_ref()
-                    .map(|c| c.price)
-                    .ok_or(e)
+                self.cache.read().await.as_ref().map(|c| c.price).ok_or(e)
             }
         }
     }

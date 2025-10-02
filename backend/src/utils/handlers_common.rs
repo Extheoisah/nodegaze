@@ -1,12 +1,14 @@
 use crate::api::common::ApiResponse;
 use crate::errors::LightningError;
+use crate::services::node_manager::{
+    ClnConnection, ClnNode, LightningClient, LndConnection, LndNode,
+};
+use crate::utils::NodeId;
 use crate::utils::jwt::{Claims, NodeCredentials};
 use axum::http::StatusCode;
 use bitcoin::secp256k1::PublicKey;
 use lightning::ln::PaymentHash;
 use std::str::FromStr;
-use crate::utils::NodeId;
-use crate::services::node_manager::{LndNode, LndConnection, ClnNode, ClnConnection, LightningClient};
 
 /// Extract credentials from claims
 pub fn extract_node_credentials(claims: &Claims) -> Result<&NodeCredentials, (StatusCode, String)> {
@@ -38,7 +40,7 @@ pub async fn create_node_client(
             })
             .await
             .map_err(|e| handle_node_error(e, "connect to LND node"))?;
-            
+
             Ok(Box::new(lnd_node))
         }
         "cln" => {
@@ -53,7 +55,7 @@ pub async fn create_node_client(
             })
             .await
             .map_err(|e| handle_node_error(e, "connect to CLN node"))?;
-            
+
             Ok(Box::new(cln_node))
         }
         _ => {
@@ -74,7 +76,7 @@ pub async fn create_node_client(
 pub fn parse_payment_hash(payment_hash: &str) -> Result<PaymentHash, (StatusCode, String)> {
     let payment_hash_bytes = hex::decode(payment_hash).map_err(|e| {
         let error_response = ApiResponse::<()>::error(
-            format!("Invalid payment hash format: {}", e),
+            format!("Invalid payment hash format: {e}"),
             "invalid_payment_hash",
             None,
         );
@@ -105,7 +107,7 @@ pub fn parse_payment_hash(payment_hash: &str) -> Result<PaymentHash, (StatusCode
 pub fn parse_public_key(node_id: &str) -> Result<PublicKey, (StatusCode, String)> {
     PublicKey::from_str(node_id).map_err(|e| {
         let error_response = ApiResponse::<()>::error(
-            format!("Invalid node public key: {}", e),
+            format!("Invalid node public key: {e}"),
             "invalid_public_key",
             None,
         );
@@ -163,8 +165,8 @@ pub fn extract_cln_tls_components(
 pub fn handle_node_error(e: LightningError, operation: &str) -> (StatusCode, String) {
     tracing::error!("{} failed: {}", operation, e);
     let error_response = ApiResponse::<()>::error(
-        format!("Failed to {}: {}", operation, e),
-        &format!("{}_error", operation.replace(' ', "_")),
+        format!("Failed to {operation}: {e}"),
+        format!("{}_error", operation.replace(' ', "_")),
         None,
     );
     (

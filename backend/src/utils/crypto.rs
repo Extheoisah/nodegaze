@@ -77,7 +77,7 @@ impl StringCrypto {
 
         // Generate random nonce
         let mut nonce_bytes = [0u8; 12];
-        OsRng::default().fill_bytes(&mut nonce_bytes);
+        OsRng.fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         // Encrypt the plaintext
@@ -124,18 +124,17 @@ impl StringCrypto {
 /// Generate a new base64-encoded 256-bit encryption key.
 pub fn generate_key() -> String {
     let mut key = [0u8; 32];
-    OsRng::default().fill_bytes(&mut key);
+    OsRng.fill_bytes(&mut key);
     general_purpose::STANDARD.encode(key)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[cfg(test)]
     mod tests {
         use super::*;
-        
 
         #[test]
         fn test_encrypt_decrypt() {

@@ -27,7 +27,7 @@ pub async fn get_invoice_details(
     let node_credentials = extract_node_credentials(&claims)?;
     let public_key = parse_public_key(&node_credentials.node_id)?;
 
-    let node_client = create_node_client(&node_credentials, public_key).await?;
+    let node_client = create_node_client(node_credentials, public_key).await?;
 
     let invoice_details = node_client
         .get_invoice_details(&payment_hash)
@@ -53,7 +53,7 @@ pub async fn list_invoices(
     let node_credentials = extract_node_credentials(&claims)?;
     let public_key = parse_public_key(&node_credentials.node_id)?;
 
-    let node_client = create_node_client(&node_credentials, public_key).await?;
+    let node_client = create_node_client(node_credentials, public_key).await?;
 
     let invoices = node_client
         .list_invoices()

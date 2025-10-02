@@ -129,15 +129,15 @@ impl<'a> NotificationRepository<'a> {
 
         if name.is_some() {
             param_count += 1;
-            set_clauses.push(format!("name = ?{}", param_count));
+            set_clauses.push(format!("name = ?{param_count}"));
         }
         if url.is_some() {
             param_count += 1;
-            set_clauses.push(format!("url = ?{}", param_count));
+            set_clauses.push(format!("url = ?{param_count}"));
         }
         if is_active.is_some() {
             param_count += 1;
-            set_clauses.push(format!("is_active = ?{}", param_count));
+            set_clauses.push(format!("is_active = ?{param_count}"));
         }
 
         if set_clauses.is_empty() {

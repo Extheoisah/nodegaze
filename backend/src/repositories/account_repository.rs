@@ -17,7 +17,7 @@ pub struct AccountRepository<'a> {
 /// enforcing business rules and maintaining data consistency.
 impl<'a> AccountRepository<'a> {
     pub fn new(pool: &'a SqlitePool) -> Self {
-        /// Shared SQLite connection pool
+        // Shared SQLite connection pool
         Self { pool }
     }
 

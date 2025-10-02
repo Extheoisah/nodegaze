@@ -11,7 +11,7 @@ use axum::{
 };
 
 pub async fn account_router() -> Router {
-    let app = Router::new()
+    Router::new()
         .route("/create-account", post(create_account))
         .route(
             "/get-account",
@@ -24,6 +24,5 @@ pub async fn account_router() -> Router {
         .route(
             "/get-account-users",
             get(get_account_users).layer(middleware::from_fn(jwt_auth)),
-        );
-    app
+        )
 }

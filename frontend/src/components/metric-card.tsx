@@ -3,6 +3,8 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { TrendingUp, TrendingDown } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { StaticImageData } from "next/image"
+import  Image  from "next/image"
 
 interface MetricCardProps {
   title: string
@@ -14,9 +16,10 @@ interface MetricCardProps {
     direction: "up" | "down"
   }
   chart?: React.ReactNode
+  icon?: StaticImageData
 }
 
-export function MetricCard({ title, value, status, statusColor = "green", trend, chart }: MetricCardProps) {
+export function MetricCard({ title, value, status, statusColor = "green", trend, chart, icon }: MetricCardProps) {
   const statusColors = {
     green: "bg-green-100 text-green-800",
     yellow: "bg-yellow-100 text-yellow-800",
@@ -27,7 +30,10 @@ export function MetricCard({ title, value, status, statusColor = "green", trend,
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center gap-2">
-          <div className="h-4 w-4 rounded bg-muted" />
+          <div className="bg-muted" />
+           {icon && (
+          <Image src={icon} alt="" width={28} height={28} />
+        )}
           <span className="text-sm font-medium text-muted-foreground">{title}</span>
         </div>
         {status && <Badge className={cn("w-fit text-xs", statusColors[statusColor])}>{status}</Badge>}

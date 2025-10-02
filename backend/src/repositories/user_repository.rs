@@ -300,10 +300,10 @@ impl<'a> UserRepository<'a> {
         account_id: &str,
         pagination: &PaginationFilter,
     ) -> Result<Vec<User>> {
-       let limit = pagination.limit();
+        let limit = pagination.limit();
         let offset = pagination.offset();
 
-         let users = sqlx::query_as!(
+        let users = sqlx::query_as!(
             User,
             r#"
             SELECT

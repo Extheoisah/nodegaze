@@ -5,7 +5,6 @@
 //! and provides methods for interacting with the Lightning node RPCs.
 
 use crate::{
-    auth::errors,
     errors::LightningError,
     services::event_manager::{CLNEvent, LNDEvent, NodeSpecificEvent},
     utils::{
@@ -18,7 +17,7 @@ use crate::{
 
 use async_stream::stream;
 use async_trait::async_trait;
-use bitcoin::{Network, OutPoint, Txid, hashes::Hash, secp256k1::PublicKey};
+use bitcoin::{Network, OutPoint, Txid, secp256k1::PublicKey};
 use cln_grpc::pb::{
     GetinfoRequest, ListchannelsRequest, ListnodesRequest, ListpeerchannelsRequest,
     node_client::NodeClient,
@@ -46,9 +45,9 @@ use tonic::transport::{Certificate, Channel, ClientTlsConfig, Identity};
 use tonic_lnd::{
     Client,
     lnrpc::{
-        ChannelEventSubscription, ChannelEventUpdate, ChannelGraphRequest,
-        ForwardingHistoryRequest, GetInfoRequest, Invoice, InvoiceSubscription,
-        ListChannelsRequest, ListInvoiceRequest, ListPaymentsRequest, NodeInfoRequest,
+        ChannelEventSubscription, ChannelEventUpdate, ChannelGraphRequest, GetInfoRequest, Invoice,
+        InvoiceSubscription, ListChannelsRequest, ListInvoiceRequest, ListPaymentsRequest,
+        NodeInfoRequest,
         channel_event_update::{Channel as EventChannel, UpdateType as LndChannelUpdateType},
         invoice::InvoiceState,
         payment::PaymentStatus,
@@ -160,12 +159,12 @@ impl LndNode {
             .await
         {
             Ok(response) => {
-                println!("LND channel events subscription successful: {:?}", response);
+                println!("LND channel events subscription successful: {response:?}");
                 response.into_inner()
             }
             Err(e) => {
-                eprintln!("Error subscribing to LND channel events: {:?}", e);
-                return Err(LightningError::StreamingError(format!("{}", e)));
+                eprintln!("Error subscribing to LND channel events: {e:?}");
+                return Err(LightningError::StreamingError(format!("{e}")));
             }
         };
         println!("Finished channel events subscription block.");
@@ -187,8 +186,8 @@ impl LndNode {
         {
             Ok(response) => response.into_inner(),
             Err(e) => {
-                eprintln!("Error subscribing to LND invoice events: {:?}", e);
-                return Err(LightningError::StreamingError(format!("{}", e)));
+                eprintln!("Error subscribing to LND invoice events: {e:?}");
+                return Err(LightningError::StreamingError(format!("{e}")));
             }
         };
         println!("Finished invoice events subscription block.");
@@ -254,7 +253,7 @@ impl LndNode {
                                 .map(|hop| Hop {
                                     pubkey: PublicKey::from_str(&hop.pub_key)
                                         .unwrap_or(self.info.pubkey),
-                                    chan_id: ShortChannelID(hop.chan_id.try_into().unwrap_or(0)),
+                                    chan_id: ShortChannelID(hop.chan_id),
                                     amount_to_forward: (hop.amt_to_forward_msat / 1000) as u64,
                                     fee: Some((hop.fee_msat / 1000) as u64),
                                     expiry: Some(hop.expiry.into()),
@@ -330,11 +329,7 @@ impl LndNode {
         let state = match invoice.state {
             0 => {
                 // OPEN - check if payment is in progress
-                if invoice.amt_paid_sat > 0 {
-                    PaymentState::Inflight
-                } else {
-                    PaymentState::Inflight // Open invoice waiting for payment
-                }
+                PaymentState::Inflight
             }
             1 => PaymentState::Settled,  // SETTLED
             2 => PaymentState::Failed,   // CANCELED
@@ -361,7 +356,7 @@ impl LndNode {
             .into_iter()
             .map(|htlc| PaymentHtlc {
                 routes: Vec::new(),
-                attempt_id: htlc.htlc_index as u64,
+                attempt_id: htlc.htlc_index,
                 attempt_time: {
                     let accept_ns = htlc.accept_time as u64;
                     (accept_ns > 0).then_some(accept_ns / 1_000_000_000)
@@ -452,17 +447,16 @@ impl ClnNode {
             .identity(Identity::from_pem(
                 reader(&connection.client_cert).await.map_err(|err| {
                     LightningError::ConnectionError(format!(
-                        "Cannot load client certificate: {}",
-                        err
+                        "Cannot load client certificate: {err}"
                     ))
                 })?,
                 reader(&connection.client_key).await.map_err(|err| {
-                    LightningError::ConnectionError(format!("Cannot load client key: {}", err))
+                    LightningError::ConnectionError(format!("Cannot load client key: {err}"))
                 })?,
             ))
             .ca_certificate(Certificate::from_pem(
                 reader(&connection.ca_cert).await.map_err(|err| {
-                    LightningError::ConnectionError(format!("Cannot load CA certificate: {}", err))
+                    LightningError::ConnectionError(format!("Cannot load CA certificate: {err}"))
                 })?,
             ));
 
@@ -470,12 +464,12 @@ impl ClnNode {
             .map_err(|err| LightningError::ConnectionError(err.to_string()))?
             .tls_config(tls)
             .map_err(|err| {
-                LightningError::ConnectionError(format!("Cannot establish tls connection: {}", err))
+                LightningError::ConnectionError(format!("Cannot establish tls connection: {err}"))
             })?
             .connect()
             .await
             .map_err(|err| {
-                LightningError::ConnectionError(format!("Cannot connect to gRPC server: {}", err))
+                LightningError::ConnectionError(format!("Cannot connect to gRPC server: {err}"))
             })?;
         let client = Mutex::new(NodeClient::new(grpc_connection));
         let info = client
@@ -533,7 +527,7 @@ impl ClnNode {
             .await
             .list_channels(req)
             .await
-            .map_err(|err| LightningError::ListChannelsError(err.to_string()))?
+            .map_err(|err| LightningError::ChannelError(err.to_string()))?
             .into_inner();
 
         Ok(resp
@@ -564,7 +558,7 @@ impl ClnNode {
             })
             .await
             .map_err(|err| {
-                LightningError::RpcError(format!("CLN list_send_pays error: {}", err))
+                LightningError::PaymentError(format!("CLN list_send_pays error: {err}"))
             })?;
 
         let htlcs: Vec<PaymentHtlc> = sendpays_response
@@ -611,17 +605,17 @@ impl ClnNode {
         let destination_pubkey = match &payment.destination {
             Some(hex_str) => {
                 let hex_str = String::from_utf8(hex_str.clone()).map_err(|err| {
-                    LightningError::Parse(format!("Invalid destination string: {}", err))
+                    LightningError::Parse(format!("Invalid destination string: {err}"))
                 })?;
                 let pubkey = PublicKey::from_str(&hex_str).map_err(|err| {
-                    LightningError::Parse(format!("Invalid destination pubkey: {}", err))
+                    LightningError::Parse(format!("Invalid destination pubkey: {err}"))
                 })?;
                 Some(pubkey)
             }
             None => None,
         };
 
-        let creation_time = (payment.created_at > 0).then_some(payment.created_at as u64);
+        let creation_time = (payment.created_at > 0).then_some(payment.created_at);
 
         let network = self
             .get_network()
@@ -672,7 +666,7 @@ impl ClnNode {
             _ => PaymentState::Inflight,
         };
 
-        let creation_time = (invoice.expires_at > 0).then_some(invoice.expires_at as u64);
+        let creation_time = (invoice.expires_at > 0).then_some(invoice.expires_at);
 
         let completed_at = match state {
             PaymentState::Settled | PaymentState::Failed => {
@@ -692,7 +686,7 @@ impl ClnNode {
             .amount_received_msat
             .as_ref()
             .or(invoice.amount_msat.as_ref())
-            .map(|amt| (amt.msat / 1000).try_into().unwrap_or(0))
+            .map(|amt| amt.msat / 1000)
             .unwrap_or(0);
 
         let amount_usd = self.price_converter.sats_to_usd(amount_sat).await?;
@@ -834,7 +828,7 @@ impl LightningClient for LndNode {
         let list_channels_response = lightning_stub
             .list_channels(ListChannelsRequest::default())
             .await
-            .map_err(|err| LightningError::RpcError(err.to_string()))?
+            .map_err(|err| LightningError::ChannelError(err.to_string()))?
             .into_inner();
 
         let graph_response = lightning_stub
@@ -842,16 +836,29 @@ impl LightningClient for LndNode {
                 include_unannounced: false,
             })
             .await
-            .map_err(|err| LightningError::RpcError(err.to_string()))?
+            .map_err(|err| LightningError::GetGraphError(err.to_string()))?
             .into_inner();
 
         let mut last_updates: HashMap<u64, u64> = HashMap::new();
 
         for edge in graph_response.edges.into_iter() {
-            if edge.last_update > 0 {
-                let last_update_u64 = edge.last_update as u64;
+            let mut max_last_update = 0u64;
+
+            if let Some(node1_policy) = &edge.node1_policy {
+                if node1_policy.last_update > 0 {
+                    max_last_update = max_last_update.max(node1_policy.last_update as u64);
+                }
+            }
+
+            if let Some(node2_policy) = &edge.node2_policy {
+                if node2_policy.last_update > 0 {
+                    max_last_update = max_last_update.max(node2_policy.last_update as u64);
+                }
+            }
+
+            if max_last_update > 0 {
                 let entry = last_updates.entry(edge.channel_id).or_insert(0);
-                *entry = (*entry).max(last_update_u64);
+                *entry = (*entry).max(max_last_update);
             }
         }
 
@@ -898,7 +905,7 @@ impl LightningClient for LndNode {
             })
             .await
             .map_err(|err| {
-                LightningError::ChannelError(format!("LND list_channels error: {}", err))
+                LightningError::ChannelError(format!("LND list_channels error: {err}"))
             })?;
 
         let channel_opt = response
@@ -911,7 +918,7 @@ impl LightningClient for LndNode {
             Some(channel) => {
                 let channel_point = parse_channel_point(&channel.channel_point)?;
                 let remote_pubkey = PublicKey::from_str(&channel.remote_pubkey).map_err(|err| {
-                    LightningError::ChannelError(format!("Invalid remote pubkey: {}", err))
+                    LightningError::ChannelError(format!("Invalid remote pubkey: {err}"))
                 })?;
 
                 // Get policies from describe_graph
@@ -941,7 +948,7 @@ impl LightningClient for LndNode {
                                             as u64,
                                         min_htlc_msat: routing_policy.min_htlc as u64,
                                         max_htlc_msat: if routing_policy.max_htlc_msat > 0 {
-                                            Some(routing_policy.max_htlc_msat as u64)
+                                            Some(routing_policy.max_htlc_msat)
                                         } else {
                                             None
                                         },
@@ -960,7 +967,7 @@ impl LightningClient for LndNode {
                                             as u64,
                                         min_htlc_msat: routing_policy.min_htlc as u64,
                                         max_htlc_msat: if routing_policy.max_htlc_msat > 0 {
-                                            Some(routing_policy.max_htlc_msat as u64)
+                                            Some(routing_policy.max_htlc_msat)
                                         } else {
                                             None
                                         },
@@ -1035,7 +1042,7 @@ impl LightningClient for LndNode {
             .await
             .map_err(|err| {
                 tracing::error!("list_payments RPC failed: {}", err);
-                LightningError::RpcError(format!("LND list_payments error: {}", err))
+                LightningError::PaymentError(format!("LND list_payments error: {err}"))
             })?
             .into_inner();
 
@@ -1053,7 +1060,7 @@ impl LightningClient for LndNode {
             .await
             .map_err(|err| {
                 tracing::error!("list_invoices RPC failed: {}", err);
-                LightningError::RpcError(format!("LND list_invoices error: {}", err))
+                LightningError::InvoiceError(format!("LND list_invoices error: {err}"))
             })?
             .into_inner();
 
@@ -1066,8 +1073,7 @@ impl LightningClient for LndNode {
         }
 
         Err(LightningError::NotFound(format!(
-            "Payment {} not found",
-            hex_hash
+            "Payment {hex_hash} not found"
         )))
     }
 
@@ -1079,14 +1085,14 @@ impl LightningClient for LndNode {
         let payments_response = lightning_stub
             .list_payments(ListPaymentsRequest::default())
             .await
-            .map_err(|err| LightningError::RpcError(err.to_string()))?
+            .map_err(|err| LightningError::PaymentError(err.to_string()))?
             .into_inner();
 
         // Fetch incoming invoices
         let invoices_response = lightning_stub
             .list_invoices(ListInvoiceRequest::default())
             .await
-            .map_err(|err| LightningError::RpcError(err.to_string()))?
+            .map_err(|err| LightningError::InvoiceError(err.to_string()))?
             .into_inner();
 
         // Process outgoing payments
@@ -1276,7 +1282,7 @@ impl LightningClient for LndNode {
                         }
                     }
                     Err(e) => {
-                        eprintln!("Error receiving LND channel event: {:?}", e);
+                        eprintln!("Error receiving LND channel event: {e:?}");
                         None
                     }
                 };
@@ -1334,7 +1340,7 @@ impl LightningClient for LndNode {
                         }
                     },
                     Err(e) => {
-                        eprintln!("Error subscribing to LND channel events: {:?}", e);
+                        eprintln!("Error subscribing to LND channel events: {e:?}");
                         None
                     }
                 };
@@ -1364,7 +1370,7 @@ impl LightningClient for LndNode {
             .lightning()
             .list_invoices(request)
             .await
-            .map_err(|err| LightningError::RpcError(err.to_string()))?
+            .map_err(|err| LightningError::InvoiceError(err.to_string()))?
             .into_inner();
 
         let invoices = response
@@ -1420,7 +1426,6 @@ impl LightningClient for LndNode {
                         .unwrap_or_default(),
                     value: invoice.value as u64,
                     value_msat: invoice.value_msat as u64,
-                    settled: Some(invoice.settled),
                     creation_date: Some(invoice.creation_date),
                     settle_date: Some(invoice.settle_date),
                     payment_request: invoice.payment_request,
@@ -1446,14 +1451,14 @@ impl LightningClient for LndNode {
         let mut client = self.get_lightning_stub().await;
 
         let request = tonic_lnd::lnrpc::PaymentHash {
-            r_hash_str: payment_hash.to_string(),
+            r_hash: payment_hash.0.to_vec(),
             ..Default::default()
         };
 
         let response = client
             .lookup_invoice(request)
             .await
-            .map_err(|e| LightningError::RpcError(e.to_string()))?
+            .map_err(|e| LightningError::InvoiceError(e.to_string()))?
             .into_inner();
 
         let state = match InvoiceState::try_from(response.state).unwrap_or(InvoiceState::Open) {
@@ -1471,7 +1476,6 @@ impl LightningClient for LndNode {
                 .unwrap_or_default(),
             value: response.value as u64,
             value_msat: response.value_msat as u64,
-            settled: Some(response.settled),
             creation_date: Some(response.creation_date),
             settle_date: Some(response.settle_date),
             payment_request: response.payment_request,
@@ -1539,14 +1543,14 @@ impl LightningClient for ClnNode {
         let peer_channels_response = client
             .list_peer_channels(ListpeerchannelsRequest { id: None })
             .await
-            .map_err(|err| LightningError::RpcError(err.to_string()))?
+            .map_err(|err| LightningError::ChannelError(err.to_string()))?
             .into_inner();
 
         // Get routing info
         let routing_channels_response = client
             .list_channels(ListchannelsRequest::default())
             .await
-            .map_err(|err| LightningError::RpcError(format!("Failed to list channels: {}", err)))?
+            .map_err(|err| LightningError::ChannelError(format!("Failed to list channels: {err}")))?
             .into_inner();
 
         let mut channel_routing_info = HashMap::new();
@@ -1590,7 +1594,7 @@ impl LightningClient for ClnNode {
                 let channel_state = match peer_channel.state {
                     0 | 1 | 9 | 10 => ChannelState::Opening,
                     2 => ChannelState::Active,
-                    3 | 4 | 5 => ChannelState::Closing,
+                    3..=5 => ChannelState::Closing,
                     8 => ChannelState::Closed,
                     _ => ChannelState::Disabled,
                 };
@@ -1636,14 +1640,14 @@ impl LightningClient for ClnNode {
             .list_peer_channels(ListpeerchannelsRequest { id: None })
             .await
             .map_err(|err| {
-                LightningError::RpcError(format!("Failed to list peer channels: {}", err))
+                LightningError::ChannelError(format!("Failed to list peer channels: {err}"))
             })?
             .into_inner()
             .channels
             .into_iter()
             .find(|channel| channel.short_channel_id.as_deref() == Some(&channel_id.0.to_string()))
             .ok_or_else(|| {
-                LightningError::ChannelError(format!("Channel {} not found", channel_id))
+                LightningError::ChannelError(format!("Channel {channel_id} not found"))
             })?;
 
         // Get additional info from list_channels
@@ -1653,13 +1657,12 @@ impl LightningClient for ClnNode {
                 ..Default::default()
             })
             .await
-            .map_err(|err| LightningError::RpcError(format!("Failed to list channels: {}", err)))?
+            .map_err(|err| LightningError::ChannelError(format!("Failed to list channels: {err}")))?
             .into_inner();
 
         let remote_pubkey = PublicKey::from_slice(&channel.peer_id).map_err(|err| {
             LightningError::ChannelError(format!(
-                "Invalid peer pubkey for channel {}: {}",
-                channel_id, err
+                "Invalid peer pubkey for channel {channel_id}: {err}"
             ))
         })?;
 
@@ -1699,8 +1702,7 @@ impl LightningClient for ClnNode {
             .to_us_msat
             .as_ref()
             .ok_or(LightningError::ChannelError(format!(
-                "Missing to_us_msat for channel {}",
-                channel_id
+                "Missing to_us_msat for channel {channel_id}"
             )))?
             .msat
             / 1000;
@@ -1709,8 +1711,7 @@ impl LightningClient for ClnNode {
             capacity_sat
                 .checked_sub(local_balance_sat)
                 .ok_or(LightningError::ChannelError(format!(
-                    "Invalid balance calculation for channel {}",
-                    channel_id
+                    "Invalid balance calculation for channel {channel_id}"
                 )))?;
 
         let initiator = match channel.opener().as_str_name() {
@@ -1723,16 +1724,14 @@ impl LightningClient for ClnNode {
             .updates
             .as_ref()
             .ok_or(LightningError::ChannelError(format!(
-                "Missing channel updates for channel {}",
-                channel_id
+                "Missing channel updates for channel {channel_id}"
             )))?;
 
         let local_policy = updates
             .local
             .as_ref()
             .ok_or(LightningError::ChannelError(format!(
-                "Missing local policy for channel {}",
-                channel_id
+                "Missing local policy for channel {channel_id}"
             )))?;
 
         let remote_policy =
@@ -1740,8 +1739,7 @@ impl LightningClient for ClnNode {
                 .remote
                 .as_ref()
                 .ok_or(LightningError::ChannelError(format!(
-                    "Missing remote policy for channel {}",
-                    channel_id
+                    "Missing remote policy for channel {channel_id}"
                 )))?;
 
         // Build policy structs
@@ -1751,8 +1749,7 @@ impl LightningClient for ClnNode {
                 .fee_base_msat
                 .as_ref()
                 .ok_or(LightningError::ChannelError(format!(
-                    "Missing fee_base_msat in local policy for channel {}",
-                    channel_id
+                    "Missing fee_base_msat in local policy for channel {channel_id}"
                 )))?
                 .msat,
             fee_rate_milli_msat: local_policy.fee_proportional_millionths as u64,
@@ -1760,8 +1757,7 @@ impl LightningClient for ClnNode {
                 .htlc_minimum_msat
                 .as_ref()
                 .ok_or(LightningError::ChannelError(format!(
-                    "Missing htlc_minimum_msat in local policy for channel {}",
-                    channel_id
+                    "Missing htlc_minimum_msat in local policy for channel {channel_id}"
                 )))?
                 .msat,
             max_htlc_msat: local_policy.htlc_maximum_msat.as_ref().map(|amt| amt.msat),
@@ -1776,8 +1772,7 @@ impl LightningClient for ClnNode {
                 .fee_base_msat
                 .as_ref()
                 .ok_or(LightningError::ChannelError(format!(
-                    "Missing fee_base_msat in remote policy for channel {}",
-                    channel_id
+                    "Missing fee_base_msat in remote policy for channel {channel_id}"
                 )))?
                 .msat,
             fee_rate_milli_msat: remote_policy.fee_proportional_millionths as u64,
@@ -1785,8 +1780,7 @@ impl LightningClient for ClnNode {
                 .htlc_minimum_msat
                 .as_ref()
                 .ok_or(LightningError::ChannelError(format!(
-                    "Missing htlc_minimum_msat in remote policy for channel {}",
-                    channel_id
+                    "Missing htlc_minimum_msat in remote policy for channel {channel_id}"
                 )))?
                 .msat,
             max_htlc_msat: remote_policy.htlc_maximum_msat.as_ref().map(|amt| amt.msat),
@@ -1857,7 +1851,7 @@ impl LightningClient for ClnNode {
                 ..Default::default()
             })
             .await
-            .map_err(|err| LightningError::RpcError(format!("CLN listpays error: {}", err)))?
+            .map_err(|err| LightningError::PaymentError(format!("CLN listpays error: {err}")))?
             .into_inner();
 
         if let Some(payment) = response.pays.into_iter().last() {
@@ -1870,7 +1864,7 @@ impl LightningClient for ClnNode {
             .await
             .map_err(|err| {
                 tracing::error!("list_invoices RPC failed: {}", err);
-                LightningError::RpcError(format!("CLN list_invoices error: {}", err))
+                LightningError::InvoiceError(format!("CLN list_invoices error: {err}"))
             })?
             .into_inner();
 
@@ -1883,8 +1877,7 @@ impl LightningClient for ClnNode {
         }
 
         Err(LightningError::NotFound(format!(
-            "Payment {} not found",
-            hex_hash
+            "Payment {hex_hash} not found"
         )))
     }
 
@@ -1896,14 +1889,14 @@ impl LightningClient for ClnNode {
         let pays_response = client
             .list_pays(cln_grpc::pb::ListpaysRequest::default())
             .await
-            .map_err(|err| LightningError::RpcError(err.to_string()))?
+            .map_err(|err| LightningError::PaymentError(err.to_string()))?
             .into_inner();
 
         // Fetch incoming invoices
         let invoices_response = client
             .list_invoices(cln_grpc::pb::ListinvoicesRequest::default())
             .await
-            .map_err(|err| LightningError::RpcError(err.to_string()))?
+            .map_err(|err| LightningError::InvoiceError(err.to_string()))?
             .into_inner();
 
         // Process outgoing payments
@@ -1921,7 +1914,7 @@ impl LightningClient for ClnNode {
                 let amount_sat = payment
                     .amount_msat
                     .as_ref()
-                    .map(|msat| (msat.msat / 1000).try_into().unwrap_or(0))
+                    .map(|msat| msat.msat / 1000)
                     .unwrap_or(0);
 
                 let amount_usd = PriceConverter::sats_to_usd_with_price(amount_sat, btc_price);
@@ -1930,13 +1923,11 @@ impl LightningClient for ClnNode {
                     payment.amount_sent_msat.as_ref(),
                     payment.amount_msat.as_ref(),
                 ) {
-                    (Some(sent), Some(received)) => {
-                        Some(((sent.msat - received.msat) / 1000).try_into().unwrap_or(0))
-                    }
+                    (Some(sent), Some(received)) => Some((sent.msat - received.msat) / 1000),
                     _ => None,
                 };
 
-                let creation_time = (payment.created_at > 0).then_some(payment.created_at as u64);
+                let creation_time = (payment.created_at > 0).then_some(payment.created_at);
 
                 Some(PaymentSummary {
                     state,
@@ -1973,7 +1964,7 @@ impl LightningClient for ClnNode {
                     .amount_received_msat
                     .as_ref()
                     .or(invoice.amount_msat.as_ref())
-                    .map(|amt| (amt.msat / 1000).try_into().unwrap_or(0))
+                    .map(|amt| amt.msat / 1000)
                     .unwrap_or(0);
 
                 let amount_usd = PriceConverter::sats_to_usd_with_price(amount_sat, btc_price);
@@ -2029,7 +2020,7 @@ impl LightningClient for ClnNode {
             loop {
                 sleep(Duration::from_millis(60)).await;
                 yield NodeSpecificEvent::CLN(CLNEvent::ChannelOpened {  });
-                counter  = counter + 1;
+                counter += 1;
             }
         };
 
@@ -2041,7 +2032,7 @@ impl LightningClient for ClnNode {
         let response = client
             .list_invoices(cln_grpc::pb::ListinvoicesRequest::default())
             .await
-            .map_err(|err| LightningError::RpcError(err.to_string()))?
+            .map_err(|err| LightningError::InvoiceError(err.to_string()))?
             .into_inner();
 
         let now = chrono::Utc::now().timestamp() as u64;
@@ -2081,7 +2072,6 @@ impl LightningClient for ClnNode {
                         .unwrap_or_default(),
                     value: amount_sats,
                     value_msat: amount_msat,
-                    settled: None,
                     creation_date: None,
                     settle_date: invoice.paid_at.map(|timestamp| timestamp as i64),
                     payment_request: invoice.bolt11.unwrap_or_default(),
@@ -2113,7 +2103,7 @@ impl LightningClient for ClnNode {
         let response = client
             .list_invoices(request)
             .await
-            .map_err(|e| LightningError::RpcError(format!("CLN listinvoices error: {}", e)))?
+            .map_err(|e| LightningError::InvoiceError(format!("CLN listinvoices error: {e}")))?
             .into_inner();
 
         let invoice = response
@@ -2153,7 +2143,6 @@ impl LightningClient for ClnNode {
                 .unwrap_or_default(),
             value: amount_sats,
             value_msat: amount_msat,
-            settled: None,
             creation_date: None,
             settle_date: invoice.paid_at.map(|timestamp| timestamp as i64),
             payment_request: invoice.bolt11.unwrap_or_default(),
