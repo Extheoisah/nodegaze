@@ -90,7 +90,6 @@ export function DataTable({
         if (filters?.to) params.set("to", filters.to);
 
         const res = await fetch(`/api/payments?${params.toString()}`);
-        console.log("API URL:", `/api/payments?${params.toString()}`);
         console.log("API Status:", res.status);
         
         if (!res.ok) {
@@ -100,7 +99,6 @@ export function DataTable({
         }
         
         const data = await res.json();
-        console.log("API RESPONSE:", data);
         setPayments(data?.data?.items || []);
         setTotalPages(data.pagination?.total_pages || 1);
       } catch (err) {

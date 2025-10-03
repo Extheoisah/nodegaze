@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import Link from "next/link";
 
 interface DashboardHeaderProps {
   pageTitle: string;
@@ -82,7 +83,11 @@ export function DashboardHeader({ pageTitle }: DashboardHeaderProps) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem>Profile</DropdownMenuItem>
+            <DropdownMenuItem asChild>
+            <Link href="/profile" className="cursor-pointer">
+                Profile
+              </Link>
+            </DropdownMenuItem>
             <DropdownMenuItem>Settings</DropdownMenuItem>
             <DropdownMenuItem 
               onClick={handleSignOut} 
