@@ -4,8 +4,8 @@
 
 use crate::config::Config;
 use crate::database::models::{
-    AcceptInviteRequest, CreateInvite, CreateInviteRequest, Invite, InviteStatus, RoleAccessLevel,
-    User,
+    AcceptInviteRequest, Account, CreateInvite, CreateInviteRequest, Invite, InviteStatus,
+    RoleAccessLevel, User,
 };
 use crate::errors::{ServiceError, ServiceResult};
 use crate::repositories::account_repository::AccountRepository;
@@ -148,60 +148,55 @@ impl<'a> InviteService<'a> {
                 }
             })?;
 
-        self.try_send_invite_email(&invite, &user).await;
+        let account = account_repo
+            .get_account_by_id(&invite.account_id)
+            .await?
+            .ok_or_else(|| ServiceError::not_found("Account", &invite.account_id))?;
+
+        self.try_send_invite_email(&invite, &user, &account.name);
 
         Ok(invite)
     }
 
     /// Attempts to send an invite email, logging but not failing if email service is unavailable
-    async fn try_send_invite_email(&self, invite: &Invite, inviter: &User) {
-        if let Some(ref email_service) = self.email_service {
-            match self
-                .send_invite_email_internal(email_service, invite, inviter)
-                .await
-            {
-                Ok(_) => {
-                    tracing::info!("Invite email sent successfully to {}", invite.invitee_email);
+    fn try_send_invite_email(&self, invite: &Invite, inviter: &User, account_name: &str) {
+        if let Some(email_service) = self.email_service.clone() {
+            let invite_clone = invite.clone();
+            let inviter_username = inviter.username.clone();
+            let account_name = account_name.to_string();
+
+            tokio::spawn(async move {
+                match email_service
+                    .send_invite_email(
+                        &invite_clone.invitee_email,
+                        None,
+                        &invite_clone.token,
+                        &inviter_username,
+                        &account_name,
+                    )
+                    .await
+                {
+                    Ok(_) => {
+                        tracing::info!(
+                            "Invite email sent successfully to {}",
+                            invite_clone.invitee_email
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            "Failed to send invite email to {}: {}",
+                            invite_clone.invitee_email,
+                            e
+                        );
+                    }
                 }
-                Err(e) => {
-                    tracing::error!(
-                        "Failed to send invite email to {}: {}",
-                        invite.invitee_email,
-                        e
-                    );
-                }
-            }
+            });
         } else {
             tracing::warn!(
                 "Email service not configured. Invite email not sent to {}",
                 invite.invitee_email
             );
         }
-    }
-
-    /// Internal method to send email when service is available
-    async fn send_invite_email_internal(
-        &self,
-        email_service: &EmailService,
-        invite: &Invite,
-        inviter: &User,
-    ) -> ServiceResult<()> {
-        // Get account details
-        let account_repo = AccountRepository::new(self.pool);
-        let account = account_repo
-            .get_account_by_id(&invite.account_id)
-            .await?
-            .ok_or_else(|| ServiceError::not_found("Account", &invite.account_id))?;
-
-        email_service
-            .send_invite_email(
-                &invite.invitee_email,
-                None,
-                invite.token.as_str(),
-                &inviter.username,
-                &account.name,
-            )
-            .await
     }
 
     pub async fn get_invites_by_account_id(&self, account_id: &str) -> ServiceResult<Vec<Invite>> {
@@ -213,6 +208,7 @@ impl<'a> InviteService<'a> {
 
     pub async fn resend_invite(&self, invite_id: &str, user: &User) -> ServiceResult<Invite> {
         let repo = InviteRepository::new(self.pool);
+        let account_repo = AccountRepository::new(self.pool);
         let invite = repo
             .get_invite_by_id(invite_id)
             .await?
@@ -222,6 +218,11 @@ impl<'a> InviteService<'a> {
         if invite.account_id != user.account_id {
             return Err(ServiceError::not_found("Invite", invite_id.to_string()));
         }
+
+        let account = account_repo
+            .get_account_by_id(&invite.account_id)
+            .await?
+            .ok_or_else(|| ServiceError::not_found("Account", &invite.account_id))?;
 
         let expires_at = Utc::now() + Duration::days(7);
 
@@ -254,7 +255,7 @@ impl<'a> InviteService<'a> {
             return Err(ServiceError::not_found("Invitation not resent", &invite.id));
         }
 
-        self.try_send_invite_email(&invite, user).await;
+        self.try_send_invite_email(&invite, &user, &account.name);
         Ok(invite)
     }
 
