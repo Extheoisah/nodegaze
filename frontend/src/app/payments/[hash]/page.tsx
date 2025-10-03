@@ -39,7 +39,6 @@ interface PaymentData {
 export default function PaymentDetailsPage({ params }: PaymentDetailsPageProps) {
   const { hash } = React.use(params);
 
-  // console.log({hash})
   
   const [paymentData, setPaymentData] = React.useState<PaymentData | null>(null);
 
@@ -47,9 +46,7 @@ export default function PaymentDetailsPage({ params }: PaymentDetailsPageProps) 
   async function fetchPaymentData() {
     try {
       const res = await fetch(`/api/payments/${hash}`);
-      console.log("Fetch response:", res);
       const json = await res.json();
-      console.log("API response:", json);
 
       const payment = json.data;
       
