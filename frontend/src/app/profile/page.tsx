@@ -40,7 +40,6 @@ export default function ProfilePage() {
             role: session.user.role || apiUser?.role || "",
           });
         } else {
-          console.warn("Profile API failed, using session data only");
           setUser({
             name: session.user.name || "",
             email: session.user.email || "",
@@ -59,8 +58,7 @@ export default function ProfilePage() {
         } catch (memberError) {
           console.warn("Member count API error:", memberError);
         }
-      } catch (e) {
-        console.error("Unexpected error in fetchUser:", e);
+      } catch {
         if (!session?.user?.name && !session?.user?.email) {
           setError("Failed to load user data");
         } else {
@@ -108,20 +106,12 @@ export default function ProfilePage() {
     }
 
     try {
-      console.log('Sending invite for email:', emailToSend);
-      console.log('Session data:', {
-        user: session?.user,
-        hasToken: !!session?.accessToken,
-        tokenType: typeof session?.accessToken
-      });
-
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
 
       if (session?.accessToken) {
         headers['Authorization'] = `Bearer ${session.accessToken}`;
-        console.log('Added Authorization header with token');
       } else {
         console.log('No access token available in session');
       }
@@ -130,7 +120,6 @@ export default function ProfilePage() {
         email: emailToSend
       };
 
-      console.log(`Sending invite for email: ${emailToSend}`);
       
       const response = await fetch('/api/invite/send-invite', {
         method: 'POST',
@@ -138,14 +127,10 @@ export default function ProfilePage() {
         body: JSON.stringify(requestData),
       });
 
-      console.log(`Response for ${emailToSend}:`, {
-        status: response.status,
-        ok: response.ok,
-        headers: Object.fromEntries(response.headers.entries())
-      });
-
       const result = await response.json();
       console.log(`API Response for ${emailToSend}:`, result);
+
+      console.log(response)
 
       if (response.ok && response.status === 200) {
         // Success - show invite sent popup
