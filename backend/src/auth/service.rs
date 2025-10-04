@@ -82,7 +82,7 @@ impl<'a> AuthService<'a> {
         // Check for existing node credentials and convert them to JWT format
         let credential_repo = CredentialRepository::new(self.pool);
         let node_credentials =
-            if let Some(credential) = credential_repo.get_credential_by_user_id(&user_id).await? {
+            if let Some(credential) = credential_repo.get_credential_by_account_id(&account_id).await? {
                 Some(NodeCredentials {
                     node_id: credential.node_id,
                     node_alias: credential.node_alias,
