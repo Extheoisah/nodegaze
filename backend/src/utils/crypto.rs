@@ -3,8 +3,10 @@
 //! ## Usage
 //!
 //! ```rust
-//! let encrypted = StringCrypto::encrypt("secret data")?;
-//! let decrypted = StringCrypto::decrypt(&encrypted)?;
+//! use backend::utils::crypto::StringCrypto;
+//! let encrypted = StringCrypto::encrypt("secret data").unwrap();
+//! let decrypted = StringCrypto::decrypt(&encrypted).unwrap();
+//! assert_eq!(decrypted, "secret data");
 //! ```
 
 use crate::config::Config;

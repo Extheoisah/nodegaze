@@ -306,7 +306,7 @@ pub enum InvoiceStatus {
     Failed,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq, Eq)]
 pub enum ChannelState {
     Opening, // funding tx not confirmed
     #[default]

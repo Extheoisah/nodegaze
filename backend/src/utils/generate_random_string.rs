@@ -17,6 +17,7 @@ use rand::{Rng, distributions::Alphanumeric};
 /// # Examples
 ///
 /// ```
+/// use backend::utils::generate_random_string::generate_random_string;
 /// let token = generate_random_string(32);
 /// assert_eq!(token.len(), 32);
 ///
