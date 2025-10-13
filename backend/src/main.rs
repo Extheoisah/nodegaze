@@ -57,7 +57,7 @@ async fn main() {
     let bind_address = format!("0.0.0.0:{}", config.server_port);
     let listener = tokio::net::TcpListener::bind(&bind_address).await.unwrap();
 
-    info!("Starting NodeGaze server on port {}", config.server_port);
+    info!("Started NodeGaze server on port {}", config.server_port);
     axum::serve(listener, app).await.unwrap();
 }
 

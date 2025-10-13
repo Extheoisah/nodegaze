@@ -2016,11 +2016,11 @@ impl LightningClient for ClnNode {
         &mut self,
     ) -> Result<Pin<Box<dyn Stream<Item = NodeSpecificEvent> + Send>>, LightningError> {
         let event_stream = async_stream::stream! {
-            let mut counter = 0;
+            let mut _counter = 0;
             loop {
                 sleep(Duration::from_millis(60)).await;
                 yield NodeSpecificEvent::CLN(CLNEvent::ChannelOpened {  });
-                counter += 1;
+                _counter += 1;
             }
         };
 

@@ -159,7 +159,7 @@ impl<'a> EventService<'a> {
     /// Processes a Lightning node event and creates a standardized event.
     pub async fn process_lightning_event(
         &self,
-        pool: &SqlitePool,
+        _pool: &SqlitePool,
         account_id: String,
         user_id: String,
         node_id: String,

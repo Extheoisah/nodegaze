@@ -4,8 +4,8 @@
 
 use crate::config::Config;
 use crate::database::models::{
-    AcceptInviteRequest, Account, CreateInvite, CreateInviteRequest, Invite, InviteStatus,
-    RoleAccessLevel, User,
+    AcceptInviteRequest, CreateInvite, CreateInviteRequest, Invite, InviteStatus, RoleAccessLevel,
+    User,
 };
 use crate::errors::{ServiceError, ServiceResult};
 use crate::repositories::account_repository::AccountRepository;
