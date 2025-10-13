@@ -22,7 +22,7 @@ function SessionErrorHandler({ children }: { children: React.ReactNode }) {
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  // Create QueryClient in state to ensure it's only created once per session
+  // QueryClient in state to ensure it's only created once per session
   const [queryClient] = useState(
     () =>
       new QueryClient({

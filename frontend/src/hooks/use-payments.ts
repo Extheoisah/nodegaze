@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { keepPreviousData } from "@tanstack/react-query";
 
-// Payment type definitions
 export type Payment = {
   state: string;
   payment_type: string;
@@ -43,7 +42,6 @@ export function usePaymentMetrics(filters?: PaymentFilters) {
   return useQuery({
     queryKey: ["payments", "metrics", filters],
     queryFn: async (): Promise<PaymentMetrics> => {
-      // Build query params
       const params = new URLSearchParams();
       params.set("per_page", "100");
       params.set("page", "1");

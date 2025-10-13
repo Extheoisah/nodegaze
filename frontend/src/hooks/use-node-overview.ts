@@ -22,21 +22,18 @@ export type NodeOverviewMetrics = {
  * Uses React Query's caching to avoid repeated calculations
  */
 export function useNodeOverview() {
-  // Fetch all channels (up to 100) for metrics calculation
   const {
     data: channelsData,
     isLoading: channelsLoading,
     error: channelsError,
   } = useChannels(1, 100);
 
-  // Fetch all payments (up to 100) for payment statistics
   const {
     data: paymentsData,
     isLoading: paymentsLoading,
     error: paymentsError,
   } = usePayments(1, 100, "all", undefined);
 
-  // Fetch onchain wallet balance
   const {
     data: walletBalance,
     isLoading: walletLoading,
@@ -50,13 +47,11 @@ export function useNodeOverview() {
     const payments = paymentsData?.payments || [];
     const onchainBalance = walletBalance || 0;
 
-    // Calculate channel metrics
     const activeChannels = channels.filter(
       (c) => c.state.toLowerCase() === "active"
     );
 
     const totalCapacity = channels.reduce((sum, c) => {
-      // Calculate capacity from inbound + outbound if capacity not directly available
       const capacity = c.inbound_balance + c.outbound_balance;
       return sum + capacity;
     }, 0);
@@ -71,7 +66,6 @@ export function useNodeOverview() {
       0
     );
 
-    // Calculate payment metrics
     const settledPayments = payments.filter(
       (p) => p.state.toLowerCase() === "settled"
     );

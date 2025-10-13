@@ -42,12 +42,10 @@ export default function Page() {
     setIsFiltered(hasActiveFilters);
   };
 
-  // Format numbers for display
   const formatSats = (amount: number) => {
     return new Intl.NumberFormat("en-US").format(amount);
   };
 
-  // Create payment cards with real data
   const paymentCards = [
     {
       title: "Total Incoming Amount",
