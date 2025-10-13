@@ -32,10 +32,6 @@ export function LoginForm({
     const credentials = {
       username: formData.get("username") as string,
       password: formData.get("password") as string,
-      nodePublicKey: formData.get("nodePublicKey") as string,
-      nodeAddress: formData.get("nodeAddress") as string,
-      macaroonPath: formData.get("macaroonPath") as string,
-      tlsCertPath: formData.get("tlsCertPath") as string,
     }
 
     try {
@@ -101,58 +97,6 @@ export function LoginForm({
                   name="password"
                   type="password" 
                   placeholder="password" 
-                  required 
-                  disabled={isLoading}
-                />
-              </div>
-              <div className="grid gap-3">
-                <div className="flex items-center">
-                  <Label htmlFor="node-public-key">Node Public Key</Label>
-                </div>
-                <Input 
-                  id="node-public-key" 
-                  name="nodePublicKey"
-                  type="text" 
-                  placeholder="026c62282d38ea38daa437041b38e696f245749820343f60800c898274e8189467" 
-                  required 
-                  disabled={isLoading}
-                />
-              </div>
-              <div className="grid gap-3">
-                <div className="flex items-center">
-                  <Label htmlFor="node-address">Node Address</Label>
-                </div>
-                <Input 
-                  id="node-address" 
-                  name="nodeAddress"
-                  type="text" 
-                  placeholder="https://192.168.122.92:10001" 
-                  required 
-                  disabled={isLoading}
-                />
-              </div>
-              <div className="grid gap-3">
-                <div className="flex items-center">
-                  <Label htmlFor="macaroon-path">Macaroon Path</Label>
-                </div>
-                <Input 
-                  id="macaroon-path" 
-                  name="macaroonPath"
-                  type="text" 
-                  placeholder="/home/user/.lnd/data/chain/bitcoin/mainnet/admin.macaroon" 
-                  required 
-                  disabled={isLoading}
-                />
-              </div>
-              <div className="grid gap-3">
-                <div className="flex items-center">
-                  <Label htmlFor="tls-cert-path">TLS Certificate Path</Label>
-                </div>
-                <Input 
-                  id="tls-cert-path" 
-                  name="tlsCertPath"
-                  type="text" 
-                  placeholder="/home/user/.lnd/tls.cert" 
                   required 
                   disabled={isLoading}
                 />

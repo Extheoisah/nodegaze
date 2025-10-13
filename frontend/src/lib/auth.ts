@@ -9,10 +9,6 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         username: { label: "Username", type: "text" },
         password: { label: "Password", type: "password" },
-        nodePublicKey: { label: "Node Public Key", type: "text" },
-        nodeAddress: { label: "Node Address", type: "text" },
-        macaroonPath: { label: "Macaroon Path", type: "text" },
-        tlsCertPath: { label: "TLS Certificate Path", type: "text" },
       },
       async authorize(credentials) {
         if (!credentials?.username || !credentials?.password) {
@@ -20,18 +16,7 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        if (
-          !credentials?.nodePublicKey ||
-          !credentials?.nodeAddress ||
-          !credentials?.macaroonPath ||
-          !credentials?.tlsCertPath
-        ) {
-          console.error("Missing node credentials");
-          return null;
-        }
-
         try {
-          // Step 1: Login to get access token
           const backendUrl = process.env.BACKEND_URL || "http://localhost:3030";
           const loginResponse = await fetch(`${backendUrl}/auth/login`, {
             method: "POST",
@@ -58,65 +43,20 @@ export const authOptions: NextAuthOptions = {
 
           const { access_token, user } = loginData.data;
 
-          if (!access_token) {
-            console.error("No access token");
+          if (!access_token || !user) {
+            console.error("No access token or user data");
             return null;
           }
 
-          const nodeAuthResponse = await fetch(`${backendUrl}/api/node/auth`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${access_token}`,
-            },
-            body: JSON.stringify({
-              id: credentials.nodePublicKey,
-              address: credentials.nodeAddress,
-              macaroon: credentials.macaroonPath,
-              cert: credentials.tlsCertPath,
-            }),
-          });
-
-          console.log("Node authentication response:", {
-            id: credentials.nodePublicKey,
-            address: credentials.nodeAddress,
-            macaroon: credentials.macaroonPath,
-            cert: credentials.tlsCertPath,
-          });
-
-          if (!nodeAuthResponse.ok) {
-            console.error(
-              "Node authentication response:",
-              await nodeAuthResponse.text()
-            );
-            console.error(
-              "Node authentication headers:",
-              nodeAuthResponse.headers
-            );
-            console.error(
-              "Node authentication failed:",
-              nodeAuthResponse.status
-            );
-            return null;
-          }
-
-          const nodeAuthData = await nodeAuthResponse.json();
-          console.log("Node authentication data:", nodeAuthData);
-
-          // Return user data if both authentication steps succeed
-          if (user) {
-            return {
-              id: user.id,
-              name: user.account_name || user.username,
-              email: user.email,
-              username: user.username,
-              accessToken: access_token,
-              role: user.role,
-              accountId: user.account_id,
-            };
-          }
-
-          return null;
+          return {
+            id: user.id,
+            name: user.account_name || user.username,
+            email: user.email,
+            username: user.username,
+            accessToken: access_token,
+            role: user.role,
+            accountId: user.account_id,
+          };
         } catch (error) {
           console.error("Auth error:", error);
           return null;
