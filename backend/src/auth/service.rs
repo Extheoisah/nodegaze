@@ -6,9 +6,8 @@ use crate::errors::{ServiceError, ServiceResult};
 use crate::repositories::account_repository::AccountRepository;
 use crate::repositories::credential_repository::CredentialRepository;
 use crate::services::user_service::UserService;
-use crate::utils::jwt::{Claims, JwtUtils, NodeCredentials};
+use crate::utils::jwt::{JwtUtils, NodeCredentials};
 use sqlx::SqlitePool;
-use uuid::Uuid;
 use validator::Validate;
 
 /// Authentication service for handling login, token generation, and user management
@@ -141,124 +140,6 @@ impl<'a> AuthService<'a> {
         })
     }
 
-    /// Store node credentials in database after authentication
-    pub async fn store_node_credentials(
-        &self,
-        claims: Claims,
-        request: StoreNodeCredentialsRequest,
-    ) -> ServiceResult<StoreNodeCredentialsResponse> {
-        // Validate input
-        if let Err(validation_errors) = request.validate() {
-            let error_messages: Vec<String> = validation_errors
-                .field_errors()
-                .into_iter()
-                .flat_map(|(field, errors)| {
-                    errors.iter().map(move |error| {
-                        format!(
-                            "{}: {}",
-                            field,
-                            error.message.as_ref().unwrap_or(&"Invalid value".into())
-                        )
-                    })
-                })
-                .collect();
-            return Err(ServiceError::validation(error_messages.join(", ")));
-        }
-
-        let credential_repo = CredentialRepository::new(self.pool);
-
-        // Check if user already has credentials stored
-        if credential_repo
-            .get_credential_by_user_id(&claims.sub)
-            .await?
-            .is_some()
-        {
-            return Err(ServiceError::already_exists(
-                "Node credentials for user",
-                &claims.sub,
-            ));
-        }
-
-        // Create credential record with all required fields
-        let create_credential = crate::database::models::CreateCredential {
-            id: Uuid::now_v7().to_string(),
-            user_id: claims.sub.clone(),
-            account_id: claims.account_id.clone(),
-            node_id: request.node_id.clone(),
-            node_alias: request.node_alias.clone(),
-            macaroon: request.macaroon.clone(),
-            tls_cert: request.tls_cert.clone(),
-            address: request.address.clone(),
-            node_type: Some(request.node_type.clone()),
-            client_cert: request.client_cert.clone(),
-            client_key: request.client_key.clone(),
-            ca_cert: request.ca_cert.clone(),
-        };
-
-        // Store in database
-        let credential = credential_repo.create_credential(create_credential).await?;
-
-        // Create node credentials for new token
-        let node_credentials = NodeCredentials {
-            node_id: request.node_id,
-            node_alias: request.node_alias,
-            node_type: request.node_type,
-            macaroon: request.macaroon,
-            tls_cert: request.tls_cert,
-            client_cert: request.client_cert,
-            client_key: request.client_key,
-            ca_cert: request.ca_cert,
-            address: request.address,
-        };
-
-        // Generate new token with node credentials
-        let access_token = self.jwt_utils.generate_token(
-            claims.sub,
-            claims.account_id,
-            claims.role,
-            claims.role_access_level,
-            Some(node_credentials),
-        )?;
-
-        Ok(StoreNodeCredentialsResponse {
-            access_token,
-            credential_id: credential.id,
-            expires_in: self.config.jwt_expires_in_seconds,
-        })
-    }
-
-    /// Revoke stored node credentials for a user
-    pub async fn revoke_node_credentials(
-        &self,
-        claims: Claims,
-    ) -> ServiceResult<RevokeNodeCredentialsResponse> {
-        let credential_repo = CredentialRepository::new(self.pool);
-
-        // Check if user has credentials to revoke
-        let credential = credential_repo
-            .get_credential_by_user_id(&claims.sub)
-            .await?
-            .ok_or_else(|| ServiceError::not_found("Node credentials", &claims.sub))?;
-
-        // Soft delete the credential
-        credential_repo.delete_credential(&credential.id).await?;
-
-        // Generate new token without node credentials
-        let access_token = self.jwt_utils.generate_token(
-            claims.sub,
-            claims.account_id,
-            claims.role,
-            claims.role_access_level,
-            None, // No node credentials
-        )?;
-
-        Ok(RevokeNodeCredentialsResponse {
-            access_token,
-            revoked: true,
-            expires_in: self.config.jwt_expires_in_seconds,
-        })
-    }
-
     /// Refresh access token with existing node credentials
     pub async fn refresh_token(
         &self,
@@ -314,13 +195,6 @@ impl<'a> AuthService<'a> {
             access_token,
             expires_in: self.config.jwt_expires_in_seconds,
         })
-    }
-
-    /// Helper method to determine node type from macaroon or other stored data
-    fn determine_node_type(&self, _macaroon: &str) -> ServiceResult<String> {
-        // For now, return a default. You might want to store this explicitly in the database
-        // or implement logic to detect from the macaroon format
-        Ok("lnd".to_string())
     }
 
     /// Helper method to get user role name

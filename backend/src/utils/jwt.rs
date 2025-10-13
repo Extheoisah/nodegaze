@@ -134,16 +134,8 @@ impl JwtUtils {
 
 /// Extract user ID from JWT claims
 impl Claims {
-    pub fn user_id(&self) -> &str {
-        &self.sub
-    }
-
     pub fn account_id(&self) -> &str {
         &self.account_id
-    }
-
-    pub fn role(&self) -> &str {
-        &self.role
     }
 
     pub fn has_node_credentials(&self) -> bool {
@@ -152,21 +144,5 @@ impl Claims {
 
     pub fn node_credentials(&self) -> Option<&NodeCredentials> {
         self.node_credentials.as_ref()
-    }
-
-    /// Check if token has expired
-    pub fn is_expired(&self) -> bool {
-        let now = Utc::now().timestamp() as usize;
-        now > self.exp
-    }
-
-    /// Check if user has specific role
-    pub fn has_role(&self, role: &str) -> bool {
-        self.role == role
-    }
-
-    /// Check if user is admin
-    pub fn is_admin(&self) -> bool {
-        self.has_role("Admin")
     }
 }

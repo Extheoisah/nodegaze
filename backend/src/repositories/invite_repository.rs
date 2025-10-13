@@ -71,31 +71,6 @@ impl<'a> InviteRepository<'a> {
     ///
     /// # Arguments
     /// * `invite_id` - Unique identifier of the invite to update
-    /// * `new_status` - New status to set for the invite
-    /// # Returns
-    /// `true` if the update was successful, `false` otherwise
-    pub async fn update_invite_status(
-        &self,
-        invite_id: &str,
-        new_status: InviteStatus,
-    ) -> Result<bool> {
-        let rows_affected = sqlx::query!(
-            r#"
-            UPDATE invites 
-            SET invite_status = ?, 
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND is_deleted = 0
-            "#,
-            new_status,
-            invite_id
-        )
-        .execute(self.pool)
-        .await?
-        .rows_affected();
-
-        Ok(rows_affected > 0)
-    }
-
     /// Retrieves a invite by their unique identifier.
     ///
     /// # Arguments

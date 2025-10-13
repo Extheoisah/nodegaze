@@ -267,11 +267,6 @@ impl<T> ApiResponse<T> {
         }
     }
 
-    /// Create a successful response with default message
-    pub fn ok(data: T) -> Self {
-        Self::success(data, "Request successful")
-    }
-
     /// Create a successful paginated response
     pub fn paginated(data: T, pagination: PaginationMeta, message: impl Into<String>) -> Self {
         Self {
@@ -356,9 +351,6 @@ pub fn service_error_to_http(error: ServiceError) -> (StatusCode, String) {
             "already_exists",
             format!("{entity} '{identifier}' already exists"),
         ),
-        ServiceError::PermissionDenied { message } => {
-            (StatusCode::FORBIDDEN, "permission_denied", message)
-        }
         ServiceError::InvalidOperation { message } => {
             (StatusCode::BAD_REQUEST, "invalid_operation", message)
         }
@@ -422,11 +414,6 @@ pub fn apply_pagination<T>(items: Vec<T>, pagination: &PaginationFilter) -> Vec<
     let limit = pagination.limit() as usize;
 
     items.into_iter().skip(offset).take(limit).collect()
-}
-
-/// Get filtered count without pagination
-pub fn get_filtered_count<T>(items: &[T]) -> u64 {
-    items.len() as u64
 }
 
 #[cfg(test)]

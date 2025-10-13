@@ -52,40 +52,6 @@ pub struct RefreshTokenResponse {
     pub expires_in: u64,
 }
 
-/// Node credentials storage request
-#[derive(Debug, Deserialize, Validate)]
-pub struct StoreNodeCredentialsRequest {
-    #[validate(length(min = 1, message = "Node ID is required"))]
-    pub node_id: String,
-
-    pub node_alias: String,
-
-    #[validate(length(min = 1, message = "Node type is required"))]
-    pub node_type: String, // "lnd" or "cln"
-
-    #[validate(length(min = 1, message = "Macaroon is required"))]
-    pub macaroon: String,
-
-    #[validate(length(min = 1, message = "TLS certificate is required"))]
-    pub tls_cert: String,
-
-    // CLN specific fields
-    pub client_cert: Option<String>,
-    pub client_key: Option<String>,
-    pub ca_cert: Option<String>,
-
-    #[validate(length(min = 1, message = "Address is required"))]
-    pub address: String,
-}
-
-/// Response after storing node credentials
-#[derive(Debug, Serialize)]
-pub struct StoreNodeCredentialsResponse {
-    pub access_token: String,
-    pub credential_id: String,
-    pub expires_in: u64,
-}
-
 /// Response after revoking node credentials
 #[derive(Debug, Serialize)]
 pub struct RevokeNodeCredentialsResponse {

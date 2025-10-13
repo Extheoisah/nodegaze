@@ -7,7 +7,7 @@ use crate::database::models::{RoleAccessLevel, User};
 use crate::errors::{ServiceError, ServiceResult};
 use crate::repositories::role_repository::RoleRepository;
 use crate::repositories::user_repository::UserRepository;
-use bcrypt::{DEFAULT_COST, hash, verify};
+use bcrypt::verify;
 use sqlx::SqlitePool;
 
 pub struct UserService<'a> {
@@ -32,13 +32,6 @@ impl<'a> UserService<'a> {
     /// # Returns
     /// Hashed password string
     ///
-    /// # Errors
-    /// Returns `ServiceError` if hashing fails
-    fn hash_password(&self, password: &str) -> ServiceResult<String> {
-        hash(password, DEFAULT_COST)
-            .map_err(|e| ServiceError::validation(format!("Password hashing failed: {e}")))
-    }
-
     /// Function to verify a password against the stored hash
     ///
     /// # Arguments

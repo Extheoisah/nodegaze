@@ -5,7 +5,7 @@
 //! such as managing node connections or aggregating data.
 
 pub mod account_service;
-pub mod credential_service;
+// pub mod credential_service; // Removed - unused service
 pub mod data_aggregator;
 pub mod email_service;
 pub mod event_manager;
