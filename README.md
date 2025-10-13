@@ -26,7 +26,7 @@ NodeGaze helps you truly see, understand, and master your Lightning node, settin
 
 ### Developer-Friendly
 - **RESTful API**: Comprehensive API for integrations and custom applications
-- **Implementation Agnostic**: Designed to work with LND, CLN, Eclair, and LDK
+- **Implementation Agnostic**: Designed to work with multiple Lightning implementations: LND (fully supported), CLN (data collection supported), Eclair (coming soon), and LDK (coming soon)
 - **Open Source**: MIT licensed with community-driven development
 - **Docker Support**: Easy deployment with containerization
 

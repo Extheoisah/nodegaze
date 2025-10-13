@@ -96,10 +96,8 @@ cargo sqlx prepare --workspace
 
 ## Step 6: Build and Run the Backend
 
+Run the following commands in the project root directory:
 ```bash
-# Navigate to backend directory
-cd backend
-
 # Build the project
 cargo build
 
