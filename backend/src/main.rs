@@ -32,6 +32,7 @@ async fn main() {
         .route("/", get(root_handler))
         .nest("/api/node", api::node::routes::node_router().await)
         .nest("/api/account", api::account::routes::account_router().await)
+        .nest("/api/credential", api::credential::routes::credential_routes())
         .nest("/auth", auth::routes::auth_router())
         .nest("/api/invite", api::invite::routes::invite_router().await)
         .nest(
