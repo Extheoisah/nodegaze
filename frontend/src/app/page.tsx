@@ -10,15 +10,12 @@ export default function Home() {
 
   useEffect(() => {
     if (status === "authenticated" && session) {
-      // Redirect authenticated users to overview
       router.push("/overview")
     } else if (status === "unauthenticated") {
-      // Redirect unauthenticated users to login
       router.push("/login")
     }
   }, [session, status, router])
 
-  // Show loading while checking authentication
   if (status === "loading") {
     return (
       <div className="flex min-h-screen w-full items-center justify-center">
@@ -30,6 +27,5 @@ export default function Home() {
     )
   }
 
-  // Return null while redirecting
   return null
 }

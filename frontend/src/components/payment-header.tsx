@@ -2,16 +2,8 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { ChevronDown } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
-import ExportData from "../../public/exportdata.svg";
 import Filter from "../../public/filter.svg";
 import Close from "../../public/close.svg";
 import Add from "../../public/add.svg";
@@ -35,13 +27,11 @@ export function PaymentHeader({
   const last = pathname.split("/").pop() ?? "";
   const pageTitle = last ? last.charAt(0).toUpperCase() + last.slice(1) : "";
 
-  const [unit, setUnit] = useState<string>("sats");
   const [showFilter, setShowFilter] = useState(false);
   const [isCapacityOpen, setIsCapacityOpen] = useState(false);
   const [isDateOpen, setIsDateOpen] = useState(false);
   const [isStateOpen, setIsStateOpen] = useState(false);
 
-  // Local filter states
   const [capacityOperator, setCapacityOperator] = useState<
     "gte" | "lte" | "eq"
   >();
@@ -53,8 +43,6 @@ export function PaymentHeader({
   >();
 
   if (!pageTitle) return null;
-
-  const units = ["sats", "BTC", "USD"] as const;
 
   const resetFilterStates = () => {
     setCapacityOperator(undefined);
@@ -105,11 +93,6 @@ export function PaymentHeader({
       <h1 className="text-3xl font-medium">{pageTitle}</h1>
 
       <div className="flex items-center gap-4">
-        <button className="flex items-center gap-2 text-sm bg-[#204ECF] rounded-[50px] text-[#F1F9FF] px-[15px] py-[10px] font-[500]">
-          <Image src={ExportData} alt="Export Data" />
-          <p>Export Data</p>
-        </button>
-
         <button
           className="flex items-center gap-2 text-sm border-[1px] font-[500] border-[#D4D4D4] bg-[#F7F7F7] rounded-[50px] text-[#294459] px-[25px] py-[10px]"
           onClick={() => setShowFilter(true)}
@@ -275,25 +258,6 @@ export function PaymentHeader({
             </div>
           </div>
         )}
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex items-center gap-2 text-sm border-[1px] font-[500] border-[#D4D4D4] bg-[#F7F7F7] rounded-[50px] text-[#294459] px-[25px] py-[20px]"
-            >
-              {unit} <ChevronDown className="ml-1 h-6 w-6" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            {units.map((u) => (
-              <DropdownMenuItem key={u} onSelect={() => setUnit(u)}>
-                {u}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
       </div>
     </div>
   );
