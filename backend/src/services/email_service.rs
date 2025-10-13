@@ -124,7 +124,7 @@ impl EmailService {
                     
                     <p>Hi {},</p>
                     
-                    <p><strong>{}</strong> has invited you to join <strong>{}</strong>.</p>
+                    <p><strong>{}</strong> has invited you to join <strong>{} organization</strong>.</p>
                     
                     <p>Click the button below to accept your invitation:</p>
                     
