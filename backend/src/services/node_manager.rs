@@ -697,6 +697,8 @@ pub trait LightningClient: Send {
         &self,
         payment_hash: &PaymentHash,
     ) -> Result<CustomInvoice, LightningError>;
+    /// Gets the onchain wallet balance in satoshis.
+    async fn get_wallet_balance(&self) -> Result<u64, LightningError>;
 }
 
 #[async_trait]
@@ -1403,6 +1405,21 @@ impl LightningClient for LndNode {
             features: None,
         })
     }
+
+    async fn get_wallet_balance(&self) -> Result<u64, LightningError> {
+        let mut client = self.get_lightning_stub().await;
+
+        let request = tonic_lnd::lnrpc::WalletBalanceRequest {};
+
+        let response = client
+            .wallet_balance(request)
+            .await
+            .map_err(|e| LightningError::GetInfoError(format!("Failed to get wallet balance: {e}")))?
+            .into_inner();
+
+        // Return confirmed balance in satoshis
+        Ok(response.confirmed_balance as u64)
+    }
 }
 
 #[async_trait]
@@ -2041,6 +2058,30 @@ impl LightningClient for ClnNode {
             htlcs: None,
             features: None,
         })
+    }
+
+    async fn get_wallet_balance(&self) -> Result<u64, LightningError> {
+        let mut client = self.get_client_stub().await;
+
+        let request = cln_grpc::pb::ListfundsRequest {
+            spent: None, // Only return unspent outputs
+        };
+
+        let response = client
+            .list_funds(request)
+            .await
+            .map_err(|e| LightningError::GetInfoError(format!("Failed to get wallet balance: {e}")))?
+            .into_inner();
+
+        // Sum up all confirmed outputs
+        let total_balance: u64 = response
+            .outputs
+            .iter()
+            .filter(|output| output.status == 1) // 1 = confirmed
+            .map(|output| output.amount_msat.as_ref().map(|amt| amt.msat / 1000).unwrap_or(0))
+            .sum();
+
+        Ok(total_balance)
     }
 }
 pub fn parse_channel_point(channel_point_str: &str) -> Result<OutPoint, LightningError> {

@@ -3,7 +3,7 @@
 //! These routes map specific API paths to handler functions responsible for
 //! serving channel statistics, node events, and other lightning-related information.
 
-use super::handlers::{authenticate_node, get_node_info, get_node_info_jwt};
+use super::handlers::{authenticate_node, get_node_info, get_node_info_jwt, get_wallet_balance};
 use crate::auth::middleware::{jwt_auth, node_credentials_required, optional_jwt_auth};
 use axum::{
     Router, middleware,
@@ -23,6 +23,12 @@ pub async fn node_router() -> Router {
         .route(
             "/info/jwt",
             get(get_node_info_jwt)
+                .layer(middleware::from_fn(node_credentials_required))
+                .layer(middleware::from_fn(jwt_auth)),
+        )
+        .route(
+            "/wallet/balance",
+            get(get_wallet_balance)
                 .layer(middleware::from_fn(node_credentials_required))
                 .layer(middleware::from_fn(jwt_auth)),
         )

@@ -359,3 +359,34 @@ pub async fn get_node_info(
         }
     }
 }
+
+/// Wallet balance response
+#[derive(Debug, serde::Serialize)]
+pub struct WalletBalanceResponse {
+    /// confirmed node onchain balance
+    pub confirmed_balance_sat: u64,
+}
+
+#[axum::debug_handler]
+pub async fn get_wallet_balance(
+    Extension(claims): Extension<Claims>,
+) -> Result<Json<ApiResponse<WalletBalanceResponse>>, (StatusCode, String)> {
+    use crate::utils::handlers_common::{create_node_client, extract_node_credentials, handle_node_error, parse_public_key};
+    
+    let node_credentials = extract_node_credentials(&claims)?;
+    let public_key = parse_public_key(&node_credentials.node_id)?;
+    
+    let node_client = create_node_client(node_credentials, public_key).await?;
+
+    let balance = node_client
+        .get_wallet_balance()
+        .await
+        .map_err(|e| handle_node_error(e, "get wallet balance"))?;
+
+    Ok(Json(ApiResponse::success(
+        WalletBalanceResponse {
+            confirmed_balance_sat: balance,
+        },
+        "Wallet balance retrieved successfully",
+    )))
+}
