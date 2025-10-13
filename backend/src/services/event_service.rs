@@ -121,41 +121,6 @@ impl<'a> EventService<'a> {
         Ok(event_responses)
     }
 
-    /// Gets event count for an account.
-    pub async fn count_events_for_account(
-        &self,
-        pool: &SqlitePool,
-        account_id: &str,
-        filters: Option<EventFilters>,
-    ) -> ServiceResult<i64> {
-        let repo = EventRepository::new(pool);
-        let count = repo.count_events_by_account_id(account_id, filters).await?;
-        Ok(count)
-    }
-
-    /// Gets event statistics by severity.
-    pub async fn get_event_stats_by_severity(
-        &self,
-        pool: &SqlitePool,
-        account_id: &str,
-    ) -> ServiceResult<(i64, i64, i64)> {
-        let repo = EventRepository::new(pool);
-
-        let info_count = repo
-            .count_events_by_account_and_severity(account_id, &EventSeverity::Info)
-            .await?;
-
-        let warning_count = repo
-            .count_events_by_account_and_severity(account_id, &EventSeverity::Warning)
-            .await?;
-
-        let critical_count = repo
-            .count_events_by_account_and_severity(account_id, &EventSeverity::Critical)
-            .await?;
-
-        Ok((info_count, warning_count, critical_count))
-    }
-
     /// Processes a Lightning node event and creates a standardized event.
     pub async fn process_lightning_event(
         &self,

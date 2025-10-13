@@ -19,7 +19,7 @@ use async_stream::stream;
 use async_trait::async_trait;
 use bitcoin::{Network, OutPoint, Txid, secp256k1::PublicKey};
 use cln_grpc::pb::{
-    GetinfoRequest, ListchannelsRequest, ListnodesRequest, ListpeerchannelsRequest,
+    GetinfoRequest, ListchannelsRequest, ListpeerchannelsRequest,
     node_client::NodeClient,
 };
 use futures::stream::{SelectAll, StreamExt};
@@ -47,7 +47,6 @@ use tonic_lnd::{
     lnrpc::{
         ChannelEventSubscription, ChannelEventUpdate, ChannelGraphRequest, GetInfoRequest, Invoice,
         InvoiceSubscription, ListChannelsRequest, ListInvoiceRequest, ListPaymentsRequest,
-        NodeInfoRequest,
         channel_event_update::{Channel as EventChannel, UpdateType as LndChannelUpdateType},
         invoice::InvoiceState,
         payment::PaymentStatus,
@@ -77,7 +76,6 @@ pub struct LndConnection {
 pub struct LndNode {
     pub client: Mutex<Client>,
     pub info: NodeInfo,
-    network: Network,
     price_converter: PriceConverter,
 }
 
@@ -117,25 +115,6 @@ impl LndNode {
             .map_err(|err| LightningError::GetInfoError(err.to_string()))?;
         connection.id.validate(&pubkey, &mut alias)?;
 
-        let network = {
-            if info.chains.is_empty() {
-                return Err(LightningError::GetInfoError(
-                    "node is not connected to any chain".to_string(),
-                ));
-            } else if info.chains.len() > 1 {
-                return Err(LightningError::GetInfoError(format!(
-                    "node is connected to more than one chain: {:?}",
-                    info.chains.iter().map(|c| c.chain.to_string())
-                )));
-            }
-
-            Network::from_str(match info.chains[0].network.as_str() {
-                "mainnet" => "bitcoin",
-                x => x,
-            })
-            .map_err(|e| LightningError::GetInfoError(e.to_string()))?
-        };
-
         Ok(Self {
             client: Mutex::new(client),
             info: NodeInfo {
@@ -143,7 +122,6 @@ impl LndNode {
                 features: parse_node_features(info.features.keys().cloned().collect()),
                 alias,
             },
-            network,
             price_converter: PriceConverter::new(),
         })
     }
@@ -436,7 +414,6 @@ pub struct ClnConnection {
 pub struct ClnNode {
     pub client: Mutex<NodeClient<Channel>>,
     pub info: NodeInfo,
-    network: Network,
     price_converter: PriceConverter,
 }
 
@@ -490,9 +467,6 @@ impl ClnNode {
             None => NodeFeatures::empty(),
         };
 
-        let network = Network::from_core_arg(&info.network)
-            .map_err(|err| LightningError::GetInfoError(err.to_string()))?;
-
         Ok(Self {
             client,
             info: NodeInfo {
@@ -500,41 +474,8 @@ impl ClnNode {
                 features,
                 alias,
             },
-            network,
             price_converter: PriceConverter::new(),
         })
-    }
-
-    /// Fetch channels belonging to the local node, initiated locally if is_source is true, and initiated remotely if
-    /// is_source is false. Introduced as a helper function because CLN doesn't have a single API to list all of our
-    /// node's channels.
-    async fn node_channels(&self, is_source: bool) -> Result<Vec<u64>, LightningError> {
-        let req = if is_source {
-            ListchannelsRequest {
-                source: Some(self.info.pubkey.serialize().to_vec()),
-                ..Default::default()
-            }
-        } else {
-            ListchannelsRequest {
-                destination: Some(self.info.pubkey.serialize().to_vec()),
-                ..Default::default()
-            }
-        };
-
-        let resp = self
-            .client
-            .lock()
-            .await
-            .list_channels(req)
-            .await
-            .map_err(|err| LightningError::ChannelError(err.to_string()))?
-            .into_inner();
-
-        Ok(resp
-            .channels
-            .into_iter()
-            .map(|channel| channel.amount_msat.unwrap_or_default().msat)
-            .collect())
     }
 
     async fn get_client_stub(&self) -> NodeClient<Channel> {
@@ -732,8 +673,6 @@ pub trait LightningClient: Send {
     fn get_info(&self) -> &NodeInfo;
     /// Retrieves the Bitcoin network the node is connected to.
     async fn get_network(&self) -> Result<Network, LightningError>;
-    /// Fetches public information about a Lightning node by its public key.
-    async fn get_node_info(&self, node_id: &PublicKey) -> Result<NodeInfo, LightningError>;
     /// Lists all channels, returning only their capacities in millisatoshis.
     async fn list_channels(&self) -> Result<Vec<ChannelSummary>, LightningError>;
     /// Gets detailed information about a specific channel.
@@ -795,31 +734,6 @@ impl LightningClient for LndNode {
             x => x,
         })
         .map_err(|err| LightningError::ValidationError(err.to_string()))?)
-    }
-
-    async fn get_node_info(&self, node_id: &PublicKey) -> Result<NodeInfo, LightningError> {
-        let mut client = self.client.lock().await;
-        let node_info = client
-            .lightning()
-            .get_node_info(NodeInfoRequest {
-                pub_key: node_id.to_string(),
-                include_channels: false,
-            })
-            .await
-            .map_err(|err| LightningError::GetNodeInfoError(err.to_string()))?
-            .into_inner();
-
-        if let Some(node_info) = node_info.node {
-            Ok(NodeInfo {
-                pubkey: *node_id,
-                alias: node_info.alias,
-                features: parse_node_features(node_info.features.keys().cloned().collect()),
-            })
-        } else {
-            Err(LightningError::GetNodeInfoError(
-                "Node not found".to_string(),
-            ))
-        }
     }
 
     async fn list_channels(&self) -> Result<Vec<ChannelSummary>, LightningError> {
@@ -1507,33 +1421,6 @@ impl LightningClient for ClnNode {
 
         Ok(Network::from_core_arg(&info.network)
             .map_err(|err| LightningError::ValidationError(err.to_string()))?)
-    }
-
-    async fn get_node_info(&self, node_id: &PublicKey) -> Result<NodeInfo, LightningError> {
-        let mut client = self.client.lock().await;
-        let mut nodes: Vec<cln_grpc::pb::ListnodesNodes> = client
-            .list_nodes(ListnodesRequest {
-                id: Some(node_id.serialize().to_vec()),
-            })
-            .await
-            .map_err(|err| LightningError::GetNodeInfoError(err.to_string()))?
-            .into_inner()
-            .nodes;
-
-        if let Some(node) = nodes.pop() {
-            Ok(NodeInfo {
-                pubkey: *node_id,
-                alias: node.alias.unwrap_or(String::new()),
-                features: node
-                    .features
-                    .clone()
-                    .map_or(NodeFeatures::empty(), NodeFeatures::from_be_bytes),
-            })
-        } else {
-            Err(LightningError::GetNodeInfoError(
-                "Node not found".to_string(),
-            ))
-        }
     }
 
     async fn list_channels(&self) -> Result<Vec<ChannelSummary>, LightningError> {

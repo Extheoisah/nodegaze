@@ -33,12 +33,6 @@ impl Database {
     pub fn pool(&self) -> &SqlitePool {
         &self.pool
     }
-
-    /// Closes the database connection pool.
-    pub async fn close(&self) {
-        self.pool.close().await;
-        println!("Database connection pool closed.");
-    }
 }
 
 impl Clone for Database {

@@ -4,7 +4,7 @@
 
 use crate::{
     api::common::PaginationFilter,
-    database::models::{CreateUser, RoleAccessLevel, User},
+    database::models::{RoleAccessLevel, User},
 };
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -32,44 +32,6 @@ impl<'a> UserRepository<'a> {
     ///
     /// # Arguments
     /// * `user` - CreateUser DTO containing user details
-    ///
-    /// # Returns
-    /// The newly created User with all fields populated
-    pub async fn create_user(&self, user: CreateUser) -> Result<User> {
-        let user = sqlx::query_as!(
-            User,
-            r#"
-            INSERT INTO users (id, account_id, role_id, role_access_level, username, password_hash, email, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            RETURNING
-            id as "id!",
-            account_id as "account_id!",
-            role_id as "role_id!",
-            role_access_level as "role_access_level: RoleAccessLevel",
-            username as "username!",
-            password_hash as "password_hash!",
-            email as "email!",
-            is_active as "is_active!",
-            created_at as "created_at!: DateTime<Utc>",
-            updated_at as "updated_at!: DateTime<Utc>",
-            is_deleted as "is_deleted!",
-            deleted_at as "deleted_at?: DateTime<Utc>"
-            "#,
-            user.id,
-            user.account_id,
-            user.role_id,
-            user.role_access_level,
-            user.username,
-            user.password_hash,
-            user.email,
-            true
-        )
-        .fetch_one(self.pool)
-        .await?;
-
-        Ok(user)
-    }
-
     /// Retrieves a user by their unique identifier.
     ///
     /// # Arguments
@@ -131,40 +93,6 @@ impl<'a> UserRepository<'a> {
             FROM users WHERE username = ? AND is_deleted = 0
             "#,
             username
-        )
-        .fetch_optional(self.pool)
-        .await?;
-
-        Ok(user)
-    }
-
-    /// Retrieves a user by their email.
-    ///
-    /// # Arguments
-    /// * `email` - Email to search for
-    ///
-    /// # Returns
-    /// `Some(User)` if found and active, `None` otherwise
-    pub async fn get_user_by_email(&self, email: &str) -> Result<Option<User>> {
-        let user = sqlx::query_as!(
-            User,
-            r#"
-            SELECT
-            id as "id!",
-            account_id as "account_id!",
-            role_id as "role_id!",
-            role_access_level as "role_access_level: RoleAccessLevel",
-            username as "username!",
-            password_hash as "password_hash!",
-            email as "email!",
-            is_active as "is_active!",
-            created_at as "created_at!: DateTime<Utc>",
-            updated_at as "updated_at!: DateTime<Utc>",
-            is_deleted as "is_deleted!",
-            deleted_at as "deleted_at?: DateTime<Utc>"
-            FROM users WHERE email = ? AND is_deleted = 0
-            "#,
-            email
         )
         .fetch_optional(self.pool)
         .await?;
@@ -237,50 +165,6 @@ impl<'a> UserRepository<'a> {
         let count = sqlx::query!(
             "SELECT COUNT(*) as count FROM users WHERE email = ? AND is_deleted = 0",
             email
-        )
-        .fetch_one(self.pool)
-        .await?;
-
-        Ok(count.count > 0)
-    }
-
-    /// Checks if username exists excluding a specific user.
-    ///
-    /// # Arguments
-    /// * `username` - Username to check
-    /// * `exclude_user_id` - User ID to exclude from check
-    ///
-    /// # Returns
-    /// `true` if another user with this username exists
-    pub async fn username_exists_excluding(
-        &self,
-        username: &str,
-        exclude_user_id: &str,
-    ) -> Result<bool> {
-        let count = sqlx::query!(
-            "SELECT COUNT(*) as count FROM users WHERE username = ? AND id != ? AND is_deleted = 0",
-            username,
-            exclude_user_id
-        )
-        .fetch_one(self.pool)
-        .await?;
-
-        Ok(count.count > 0)
-    }
-
-    /// Checks if email exists excluding a specific user.
-    ///
-    /// # Arguments
-    /// * `email` - Email to check
-    /// * `exclude_user_id` - User ID to exclude from check
-    ///
-    /// # Returns
-    /// `true` if another user with this email exists
-    pub async fn email_exists_excluding(&self, email: &str, exclude_user_id: &str) -> Result<bool> {
-        let count = sqlx::query!(
-            "SELECT COUNT(*) as count FROM users WHERE email = ? AND id != ? AND is_deleted = 0",
-            email,
-            exclude_user_id
         )
         .fetch_one(self.pool)
         .await?;

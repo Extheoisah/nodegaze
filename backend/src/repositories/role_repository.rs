@@ -86,29 +86,4 @@ impl<'a> RoleRepository<'a> {
 
         Ok(role)
     }
-
-    /// Retrieves all active roles in the system.
-    ///
-    /// # Returns
-    /// Vector of all non-deleted roles
-    pub async fn get_all_roles(&self) -> Result<Vec<Role>> {
-        let roles = sqlx::query_as!(
-            Role,
-            r#"
-            SELECT 
-            id as "id!",
-            name as "name!",
-            is_active as "is_active!",
-            created_at as "created_at!: DateTime<Utc>",
-            updated_at as "updated_at!: DateTime<Utc>",
-            is_deleted as "is_deleted!",
-            deleted_at as "deleted_at?: DateTime<Utc>"
-            FROM roles WHERE is_deleted = 0
-            "#
-        )
-        .fetch_all(self.pool)
-        .await?;
-
-        Ok(roles)
-    }
 }

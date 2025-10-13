@@ -13,7 +13,6 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
-pub mod crypto;
 pub mod generate_random_string;
 pub mod handlers_common;
 pub mod jwt;
@@ -48,15 +47,6 @@ impl NodeId {
             }
         }
         Ok(())
-    }
-
-    /// Returns the public key of the node if it is a public key node id.
-    pub fn get_pk(&self) -> Result<&PublicKey, String> {
-        if let NodeId::PublicKey(pk) = self {
-            Ok(pk)
-        } else {
-            Err("NodeId is not a PublicKey".to_string())
-        }
     }
 }
 

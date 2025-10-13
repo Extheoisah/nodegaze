@@ -92,40 +92,6 @@ impl<'a> CredentialRepository<'a> {
     /// `Some(Credential)` if found and not deleted, `None` otherwise
     ///
     /// # Security
-    /// - Returns complete credential including sensitive authentication data
-    /// - Caller must ensure proper access controls
-    pub async fn get_credential_by_id(&self, id: &str) -> Result<Option<Credential>> {
-        let credential = sqlx::query_as!(
-            Credential,
-            r#"
-                SELECT
-                id as "id!",
-                user_id as "user_id!",
-                account_id as "account_id!",
-                node_id as "node_id!",
-                node_alias as "node_alias!",
-                macaroon as "macaroon!",
-                tls_cert as "tls_cert!",
-                address as "address!",
-                node_type as "node_type?",
-                client_cert as "client_cert?",
-                client_key as "client_key?",
-                ca_cert as "ca_cert?",
-                is_active as "is_active!",
-                created_at as "created_at!: DateTime<Utc>",
-                updated_at as "updated_at!: DateTime<Utc>",
-                is_deleted as "is_deleted!",
-                deleted_at as "deleted_at?: DateTime<Utc>"
-                FROM credentials WHERE id = ? AND is_deleted = 0
-                "#,
-            id
-        )
-        .fetch_optional(self.pool)
-        .await?;
-
-        Ok(credential)
-    }
-
     /// Retrieves credentials associated with a specific user.
     ///
     /// # Arguments
@@ -202,45 +168,6 @@ impl<'a> CredentialRepository<'a> {
         .await?;
 
         Ok(credential)
-    }
-
-    /// Retrieves all credentials in the system.
-    ///
-    /// # Returns
-    /// Vector of all non-deleted credentials
-    ///
-    /// # Security
-    /// - Returns complete credentials including sensitive data
-    /// - Should only be used by admin-level services
-    pub async fn get_all_credentials(&self) -> Result<Vec<Credential>> {
-        let credentials = sqlx::query_as!(
-            Credential,
-            r#"
-               SELECT
-               id as "id!",
-               user_id as "user_id!",
-               account_id as "account_id!",
-               node_id as "node_id!",
-               node_alias as "node_alias!",
-               macaroon as "macaroon!",
-               tls_cert as "tls_cert!",
-               address as "address!",
-               node_type as "node_type?",
-               client_cert as "client_cert?",
-               client_key as "client_key?",
-               ca_cert as "ca_cert?",
-               is_active as "is_active!",
-               created_at as "created_at!: DateTime<Utc>",
-               updated_at as "updated_at!: DateTime<Utc>",
-               is_deleted as "is_deleted!",
-               deleted_at as "deleted_at?: DateTime<Utc>"
-               FROM credentials WHERE is_deleted = 0
-               "#
-        )
-        .fetch_all(self.pool)
-        .await?;
-
-        Ok(credentials)
     }
 
     /// Marks a credential as deleted (soft deletion).
