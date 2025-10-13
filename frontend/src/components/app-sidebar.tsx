@@ -14,9 +14,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
-import { Binoculars } from "@/public/assets/icons/binoculars";
 import { Eye } from "@/public/assets/icons/eye";
-import { Graph } from "@/public/assets/icons/graph";
 import { Logo } from "@/public/assets/icons/logo";
 import { Network } from "@/public/assets/icons/network";
 import { Note } from "@/public/assets/icons/note";
@@ -37,6 +35,7 @@ interface NavigationSection {
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname();
   const [channelCount, setChannelCount] = useState(0);
+  const [eventCount, setEventCount] = useState(0);
 
   useEffect(() => {
     const fetchChannelCount = async () => {
@@ -49,6 +48,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       }
     };
     fetchChannelCount();
+  }, []);
+
+  useEffect(() => {
+    const fetchEventCount = async () => {
+      try {
+        const res = await fetch("/api/events?page=1&per_page=10");
+        const result = await res.json();
+        setEventCount(result?.data?.items?.length || 0);
+      } catch {
+        setEventCount(0);
+      }
+    };
+    fetchEventCount();
   }, []);
 
 
@@ -67,14 +79,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           icon: Socket,
           count: channelCount,
         },
-        { title: "All Nodes", 
-          url: "/nodes", 
-          icon: Graph, 
-          count: 10 },
         { title: "Events", 
           url: "/events", 
           icon: Network, 
-          count: 10,
+          count: eventCount,
         },
       ],
     },
@@ -84,10 +92,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         { title: "Payment", 
           url: "/payments", 
           icon: Note, 
-        },
-        { title: "Invoices", 
-          url: "/invoices", 
-          icon: Binoculars, 
         },
       ],
     },
@@ -120,13 +124,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                         isActive={isActive}
                         className="text-sm h-11 font-medium font-clash-grotesk"
                         disabled={
-                          item.url === "/payments" || item.url === "/invoices"
+                          item.url === "/payments" || item.url === "/events"
                         }
                       >
                         <a
                           href={item.url}
                           className={`flex items-center justify-between ${
-                            ["/payments", "/invoices", "/nodes"].includes(
+                            ["/payments", "/events"].includes(
                               item.url
                             )
                               ? ""
@@ -135,7 +139,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                         >
                           <div className="flex items-center gap-2">
                             <item.icon className="h-4 w-4" />
-                            <span>{item.title}</span>
+                            <span>{item?.title}</span>
                           </div>
                           {item.count !== undefined && (
                             <span className="bg-grey-sub-background rounded-xl px-2 py-1 text-xs font-clash-grotesk font-medium text-grey-primary">

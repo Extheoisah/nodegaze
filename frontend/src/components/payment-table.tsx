@@ -28,93 +28,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { usePayments, type Payment, type PaymentFilters } from "@/hooks/use-payments";
 
-export type Payment = {
-  state: string;
-  payment_type: string;
-  amount_sat: number;
-  amount_usd: number;
-  routing_fee: number;
-  creation_time: {
-    secs_since_epoch: number;
-    nanos_since_epoch: number;
-  } | number;
-  invoice: string;
-  payment_hash: string;
-  completed_at: number;
-};
-
-export type TableFilters = {
-  paymentState?: "settled" | "failed" | "inflight";
-  operator?: "gte" | "lte" | "eq";
-  value?: number;
-  from?: string;
-  to?: string;
-};
+export type { Payment };
 
 export function DataTable({
-  payments,
-  setPayments,
   selectedState,
   filters,
 }: {
-  payments: Payment[];
-  setPayments: React.Dispatch<React.SetStateAction<Payment[]>>;
   selectedState: string;
-  filters?: TableFilters;
+  filters?: PaymentFilters;
 }) {
   const [page, setPage] = React.useState(1);
-  const [totalPages, setTotalPages] = React.useState(1);
-  const [isLoading, setIsLoading] = React.useState(false);
-  const [error, setError] = React.useState<string>("");
 
-  // Fetch payments from endpoint
-  React.useEffect(() => {
-    async function fetchPayments() {
-      try {
-        setIsLoading(true);
-        setError("");
-        const params = new URLSearchParams();
-        params.set("page", String(page));
-        params.set("per_page", "10");
+  const { data, isLoading, error } = usePayments(page, 10, selectedState, filters);
   
-        if (selectedState && selectedState !== "all") {
-          params.set("payment_types", selectedState);
-        }
-        if (filters?.paymentState) {
-          params.set("states", filters.paymentState);
-        }
-        if (filters?.operator) params.set("operator", filters.operator);
-        if (typeof filters?.value === "number") params.set("value", String(filters.value));
-        if (filters?.from) params.set("from", filters.from);
-        if (filters?.to) params.set("to", filters.to);
-
-        const res = await fetch(`/api/payments?${params.toString()}`);
-        console.log("API Status:", res.status);
-        
-        if (!res.ok) {
-          const errorText = await res.text();
-          console.error("API Error Response:", errorText);
-          throw new Error(`API Error: ${res.status} - ${errorText}`);
-        }
-        
-        const data = await res.json();
-        setPayments(data?.data?.items || []);
-        setTotalPages(data.pagination?.total_pages || 1);
-      } catch (err) {
-        console.error("Failed to fetch payments:", err);
-        // surface a simple error state similar to channels table
-        setError(
-          err instanceof Error ? err.message : "Something went wrong while fetching payments"
-        );
-        // optional: clear payments on error
-        // setPayments([]);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    fetchPayments();
-  }, [page, selectedState, filters, setPayments]);
+  const payments = data?.payments || [];
+  const totalPages = data?.totalPages || 1;
 
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -338,7 +268,7 @@ export function DataTable({
             ) : error ? (
               <TableRow>
                 <TableCell colSpan={columns.length} className="py-6 text-center text-grey-accent">
-                  {"No Payments Available..."}
+                  {error instanceof Error ? error.message : "No Payments Available..."}
                 </TableCell>
               </TableRow>
             ) : payments.length === 0 ? (

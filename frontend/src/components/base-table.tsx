@@ -25,29 +25,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import Link from "next/link";
-import { useSession } from "next-auth/react";
+import { useChannels, type Channel } from "@/hooks/use-channels";
 
-type ApiChannel = {
-  chan_id: number;
-  alias: string | null;
-  channel_state: string | null;
-  private: boolean;
-  remote_balance: number;
-  local_balance: number;
-  capacity: number;
-  last_update: number;
-  uptime: number;
-};
-
-export type Channel = {
-  id: number;
-  channel_name: string;
-  state: string;
-  inbound_balance: number;
-  outbound_balance: number;
-  last_updated: string;
-  uptime: number;
-};
+export type { Channel };
 
 export const columns: ColumnDef<Channel>[] = [
   {
@@ -220,14 +200,6 @@ export const columns: ColumnDef<Channel>[] = [
 ];
 
 export function DataTable() {
-  const { data: session, status } = useSession();
-  console.log("Session:", session);
-  console.log("Status:", status);
-
-  const [channels, setChannels] = React.useState<Channel[]>([]);
-  const [isLoading, setIsLoading] = React.useState(false);
-  const [error, setError] = React.useState<string>("");
-
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
     []
@@ -236,83 +208,12 @@ export function DataTable() {
     React.useState<VisibilityState>({});
 
   const [page, setPage] = React.useState(1);
-  const [totalPages, setTotalPages] = React.useState(1);
 
-  const fetchChannels = async (pageNum = 1) => {
-    setIsLoading(true);
-    setError("");
-    try {
-      const res = await fetch(`/api/channels?page=${pageNum}&per_page=10`);
-      const result = await res.json();
-      console.log("API RESPONSE:", result)
+  const { data, isLoading, error: queryError } = useChannels(page, 10);
 
-      if (!res.ok) {
-        throw new Error(
-          typeof result.error === "string"
-            ? result.error
-            : result.error?.message ||
-              JSON.stringify(result.error) ||
-              "No Channels Available..."
-        );
-      }
-
-      const apiItems = (result?.data?.items ?? []) as ApiChannel[];
-      setTotalPages(result?.data?.total_pages || 1); 
-
-      if (apiItems.length === 0) {
-        setChannels([]);
-        setError("No channels available...");
-        return;
-      }
-
-      const transformed: Channel[] = apiItems.map((item) => {
-        const rawState = (item.channel_state ?? "").toString().toLowerCase();
-        const state: Channel["state"] =
-          rawState === "active" ||
-          rawState === "inactive" ||
-          rawState === "pending"
-            ? (rawState as Channel["state"])
-            : "Disabled";
-        // Uptime as string category for display
-        // const uptimeSeconds = typeof item.uptime === "number" ? item.uptime : 0;
-        // const uptimePercentage = (uptimeSeconds / 86400) * 100;
-        // let uptimeCategory: string;
-        // if (uptimePercentage >= 90) uptimeCategory = "Very Good";
-        // else if (uptimePercentage >= 70) uptimeCategory = "Good";
-        // else uptimeCategory = "Poor";
-
-        return {
-          id: item.chan_id,
-          channel_name:
-            item.alias && item.alias.trim() !== ""
-              ? item.alias
-              : String(item.chan_id),
-          state,
-          inbound_balance: Number(item.remote_balance ?? 0),
-          outbound_balance: Number(item.local_balance ?? 0),
-          last_updated: new Date(
-            (item.last_update ?? 0) * 1000
-          ).toLocaleString(),
-          uptime: item.uptime,
-        };
-      });
-
-
-      setChannels(transformed);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // React.useEffect(() => {
-  //   fetchAlias(); // fetch alias once
-  // }, []);
-
-  React.useEffect(() => {
-    fetchChannels(page);
-  }, [page]); 
+  const channels = data?.channels || [];
+  const totalPages = data?.totalPages || 1;
+  const error = queryError ? (queryError instanceof Error ? queryError.message : "Something went wrong") : data?.error; 
 
 
 
@@ -378,7 +279,7 @@ export function DataTable() {
                   colSpan={columns.length}
                   className="py-6 text-center text-grey-accent"
                 >
-                  {"No Channels Available..."}
+                  {error}
                 </TableCell>
               </TableRow>
             ) : table.getRowModel().rows.length ? (

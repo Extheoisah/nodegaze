@@ -144,41 +144,25 @@ export default function ChannelDetailsPage({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 max-w-6xl">
         {/* Inbound Balance Card */}
         <div className="bg-white rounded-xl border p-6">
-          <div className="flex items-center gap-3 mb-2">
+          <div className="flex items-center gap-3 mb-4">
             <div className="w-7 h-7 bg-cerulean-blue-accent rounded-full flex items-center justify-center">
-              {/* <div className="w-3 h-3 bg-blue-500 rounded"></div> */}
               <DatabaseIcon className="h-3 w-3 text-blue-primary" />
             </div>
             <span className="text-grey-accent font-medium">
               Inbound Balance
             </span>
           </div>
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-success-green text-sm">↑ 7.2%</span>
-          </div>
-          <div className="text-3xl font-medium text-grey-dark mb-4">
+          <div className="text-3xl font-medium text-grey-dark">
             {channelData
               ? new Intl.NumberFormat("en-US").format(channelData.inboundBalance)
               : ""}{" "}
             sats
           </div>
-          {/* Mini chart placeholder */}
-          <div className="h-16 bg-success-green-background rounded-lg flex items-end justify-center">
-            <div className="flex items-end gap-1 h-full py-2">
-              {[4, 6, 3, 8, 5, 9, 7, 6, 8, 10, 7, 9].map((height, i) => (
-                <div
-                  key={i}
-                  className="w-2 bg-success-green rounded-sm"
-                  style={{ height: `${height * 4}px` }}
-                />
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* Outbound Balance Card */}
         <div className="bg-white rounded-xl border p-6">
-          <div className="flex items-center gap-3 mb-2">
+          <div className="flex items-center gap-3 mb-4">
             <div className="w-7 h-7 bg-red-100 rounded-full flex items-center justify-center">
               <DatabaseIcon className="h-3 w-3 text-red-500" />
             </div>
@@ -186,26 +170,11 @@ export default function ChannelDetailsPage({
               Outbound Balance
             </span>
           </div>
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-red-500 text-sm">↓ 7.2%</span>
-          </div>
-          <div className="text-3xl font-medium text-grey-dark mb-4">
+          <div className="text-3xl font-medium text-grey-dark">
             {channelData
               ? new Intl.NumberFormat("en-US").format(channelData.outboundBalance)
               : ""}{" "}
             sats
-          </div>
-          {/* Mini chart placeholder */}
-          <div className="h-16 bg-red-50 rounded-lg flex items-end justify-center">
-            <div className="flex items-end gap-1 h-full py-2">
-              {[8, 6, 9, 4, 7, 5, 3, 6, 4, 2, 5, 3].map((height, i) => (
-                <div
-                  key={i}
-                  className="w-2 bg-red-400 rounded-sm"
-                  style={{ height: `${height * 4}px` }}
-                />
-              ))}
-            </div>
           </div>
         </div>
       </div>
