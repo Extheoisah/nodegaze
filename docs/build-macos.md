@@ -68,6 +68,9 @@ cd ..
 
 Run the following commands in the project root directory:
 ```bash
+# Create the database
+sqlx database create
+
 # Run database migrations
 sqlx migrate run --source backend/migrations
 

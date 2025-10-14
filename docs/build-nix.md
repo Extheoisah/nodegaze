@@ -87,6 +87,10 @@ cd ..
 ```
 
 #### Step 4: Database Setup
+Create the database
+```bash
+sqlx database create
+```
 
 Run database migrations:
 
