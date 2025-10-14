@@ -8,7 +8,7 @@ use crate::services::node_manager::LightningClient;
 use crate::services::node_manager::{
     ClnConnection, ClnNode, ConnectionRequest, LndConnection, LndNode,
 };
-use crate::utils::jwt::Claims;
+use crate::utils::jwt::{Claims, JwtUtils, NodeCredentials};
 use crate::utils::{NodeId, NodeInfo};
 use axum::{
     extract::{Extension, Json},
@@ -27,6 +27,7 @@ pub struct NodeAuthResponse {
     pub node_info: NodeInfo,
     pub credential_stored: bool,
     pub credential_id: Option<String>,
+    pub new_access_token: Option<String>,
 }
 
 #[axum::debug_handler]
@@ -143,26 +144,34 @@ pub async fn authenticate_node(
     };
 
     // If user is authenticated (has JWT token), store the credentials
-    let (credential_stored, credential_id) = if let Some(user_claims) = claims {
+    let (credential_stored, credential_id, new_access_token) = if let Some(user_claims) = claims {
         match store_node_credentials(&pool, &user_claims, &payload, &node_info).await {
             Ok(credential_id) => {
                 tracing::info!("Node credentials stored for user: {}", user_claims.sub);
-                (true, Some(credential_id))
+                
+                let new_token = generate_new_token_with_credentials(
+                    &user_claims,
+                    &payload,
+                    &node_info,
+                ).ok();
+                
+                (true, Some(credential_id), new_token)
             }
             Err(e) => {
                 tracing::warn!("Failed to store credentials: {}", e);
-                (false, None)
+                (false, None, None)
             }
         }
     } else {
         tracing::info!("No JWT token provided, skipping credential storage");
-        (false, None)
+        (false, None, None)
     };
 
     let response_data = NodeAuthResponse {
         node_info,
         credential_stored,
         credential_id,
+        new_access_token,
     };
 
     let message = if credential_stored {
@@ -241,6 +250,60 @@ async fn store_node_credentials(
         .map_err(|e| format!("Failed to store credential: {e}"))?;
 
     Ok(credential.id)
+}
+
+/// Generate new JWT token with node credentials included
+fn generate_new_token_with_credentials(
+    claims: &Claims,
+    connection_request: &ConnectionRequest,
+    node_info: &NodeInfo,
+) -> Result<String, String> {
+    let jwt_utils = JwtUtils::new()
+        .map_err(|e| format!("Failed to create JWT utils: {e}"))?;
+
+    let (node_type, macaroon, tls_cert, address, client_cert, client_key, ca_cert) =
+        match connection_request {
+            ConnectionRequest::Lnd(lnd_conn) => (
+                "lnd".to_string(),
+                lnd_conn.macaroon.clone(),
+                lnd_conn.cert.clone(),
+                lnd_conn.address.clone(),
+                None,
+                None,
+                None,
+            ),
+            ConnectionRequest::Cln(cln_conn) => (
+                "cln".to_string(),
+                "".to_string(),
+                "".to_string(),
+                cln_conn.address.clone(),
+                Some(cln_conn.client_cert.clone()),
+                Some(cln_conn.client_key.clone()),
+                Some(cln_conn.ca_cert.clone()),
+            ),
+        };
+
+    let node_credentials = NodeCredentials {
+        node_id: node_info.pubkey.to_string(),
+        node_alias: node_info.alias.clone(),
+        node_type,
+        macaroon,
+        tls_cert,
+        address,
+        client_cert,
+        client_key,
+        ca_cert,
+    };
+
+    jwt_utils
+        .generate_token(
+            claims.sub.clone(),
+            claims.account_id.clone(),
+            claims.role.clone(),
+            claims.role_access_level.clone(),
+            Some(node_credentials),
+        )
+        .map_err(|e| format!("Failed to generate token: {e}"))
 }
 
 /// Get node info using JWT token credentials

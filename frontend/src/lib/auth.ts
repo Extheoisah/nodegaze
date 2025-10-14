@@ -108,7 +108,7 @@ export const authOptions: NextAuthOptions = {
     signIn: "/login",
   },
   callbacks: {
-    async jwt({ token, user, trigger }) {
+    async jwt({ token, user, trigger, session }) {
       // Initial sign in - store user data and tokens
       if (user) {
         token.username = user.username || "";
@@ -117,6 +117,14 @@ export const authOptions: NextAuthOptions = {
         token.expiresIn = user.expiresIn || 3600;
         token.role = user.role;
         token.accountId = user.accountId;
+        token.accessTokenExpiry = Date.now() + Number(token.expiresIn) * 1000;
+        return token;
+      }
+
+      // If update trigger with a new accessToken (from node connection), use it
+      if (trigger === "update" && session?.accessToken) {
+        console.log("Updating token with new access token from node connection...");
+        token.accessToken = session.accessToken;
         token.accessTokenExpiry = Date.now() + Number(token.expiresIn) * 1000;
         return token;
       }

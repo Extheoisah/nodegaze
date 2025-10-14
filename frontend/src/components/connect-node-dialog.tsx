@@ -55,9 +55,9 @@ export function ConnectNodeDialog({ onSuccess }: ConnectNodeDialogProps) {
         return;
       }
 
-      // Success
-      // Refresh the session to get updated tokens after successful node connection
-      await update({ forceRefresh: true });
+      if (result.success && result.data?.new_access_token) {
+        await update({ accessToken: result.data.new_access_token });
+      }
 
       setIsOpen(false);
       if (onSuccess) {
