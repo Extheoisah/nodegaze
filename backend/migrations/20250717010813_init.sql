@@ -91,8 +91,6 @@ CREATE TABLE IF NOT EXISTS credentials (
     is_active BOOLEAN NOT NULL DEFAULT 1,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    is_deleted BOOLEAN NOT NULL DEFAULT 0,
-    deleted_at DATETIME DEFAULT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
@@ -101,7 +99,7 @@ CREATE INDEX idx_credentials_user_id ON credentials(user_id);
 CREATE INDEX idx_credentials_account_id ON credentials(account_id);
 CREATE INDEX idx_credentials_node_type ON credentials(node_type);
 
-CREATE UNIQUE INDEX idx_credentials_user_unique ON credentials(user_id) WHERE is_deleted = 0;
+CREATE UNIQUE INDEX idx_credentials_user_unique ON credentials(user_id);
 
 CREATE TRIGGER credentials_updated_at
     AFTER UPDATE ON credentials

@@ -147,7 +147,7 @@ pub async fn revoke_node_credentials(
         }
     };
 
-    // Soft delete the credential
+    // Delete the credential
     if let Err(_e) = credential_repo.delete_credential(&credential.id).await {
         let error_response =
             ApiResponse::<()>::error("Failed to revoke credentials", "database_error", None);
