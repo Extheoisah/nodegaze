@@ -8,7 +8,6 @@ pkgs.mkShell {
 
     # Node.js and frontend tools
     nodejs_22     # Node.js 22 LTS
-    npm            # Node package manager
 
     # Database tools (useful with sqlx-cli)
     sqlite         # SQLite database
