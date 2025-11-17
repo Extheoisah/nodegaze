@@ -235,21 +235,56 @@ impl<'a> NotificationService<'a> {
                 message: format!("HTTP client setup failed: {err}"),
             })?;
 
-        let response = client
-            .post(url)
-            .json(&json!({
-                "event": "Ping",
-                "timestamp": Utc::now().to_rfc3339()
-            }))
-            .send()
-            .await
-            .map_err(|err| ServiceError::ExternalService {
-                message: match err {
-                    err if err.is_timeout() => "Webhook timeout after 5 seconds".into(),
-                    err if err.is_connect() => "Could not connect to webhook server".into(),
-                    _ => format!("Webhook communication failed: {err}"),
-                },
-            })?;
+         let response = if url.starts_with("https://hooks.slack.com/services/") {
+            client
+                .post(url)
+                .json(&json!({
+                    "text": "Ping",
+                    "blocks":[
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": "Ping"
+                            }
+                        },
+                        {
+                            "type": "context",
+                            "elements": [
+                                {
+                                    "type": "mrkdwn",
+                                    "text": format!("Timestamp: {}", Utc::now().to_rfc3339())
+                                }
+                            ]
+                        }
+                    ]
+                }))
+                .send()
+                .await
+                .map_err(|err| ServiceError::ExternalService {
+                    message: match err {
+                        err if err.is_timeout() => "Webhook timeout after 5 seconds".into(),
+                        err if err.is_connect() => "Could not connect to webhook server".into(),
+                        _ => format!("Webhook communication failed: {err}"),
+                    },
+                })?
+        } else {
+            client
+                .post(url)
+                .json(&json!({
+                    "event": "Ping",
+                    "timestamp": Utc::now().to_rfc3339()
+                }))
+                .send()
+                .await
+                .map_err(|err| ServiceError::ExternalService {
+                    message: match err {
+                        err if err.is_timeout() => "Webhook timeout after 5 seconds".into(),
+                        err if err.is_connect() => "Could not connect to webhook server".into(),
+                        _ => format!("Webhook communication failed: {err}"),
+                    },
+                })?
+        };
 
         if !response.status().is_success() {
             return Err(ServiceError::ExternalService {
