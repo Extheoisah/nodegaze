@@ -19,20 +19,22 @@ use async_stream::stream;
 use async_trait::async_trait;
 use bitcoin::{Network, OutPoint, Txid, secp256k1::PublicKey};
 use cln_grpc::pb::{
-    GetinfoRequest, ListchannelsRequest, ListpeerchannelsRequest,
-    node_client::NodeClient,
+    GetinfoRequest, ListchannelsRequest, ListpeerchannelsRequest, node_client::NodeClient,
 };
 use futures::stream::{SelectAll, StreamExt};
 use hex;
 use lightning::ln::{PaymentHash, features::NodeFeatures};
 use lightning_invoice::{Bolt11Invoice, Bolt11InvoiceDescription};
 use serde::{Deserialize, Serialize};
+use std::io::Write;
+use std::path::PathBuf;
 use std::{
     collections::{HashMap, HashSet},
     convert::TryFrom,
     pin::Pin,
     str::FromStr,
 };
+use tempfile::NamedTempFile;
 use tokio::time::Duration;
 use tokio::{
     fs::File,
@@ -99,7 +101,7 @@ fn parse_node_features(features: HashSet<u32>) -> NodeFeatures {
 impl LndNode {
     pub async fn new(connection: LndConnection) -> Result<Self, LightningError> {
         let mut client =
-            tonic_lnd::connect(connection.address, connection.cert, connection.macaroon)
+            Self::connect_lnd_with_hex(connection.address, connection.cert, connection.macaroon)
                 .await
                 .map_err(|err| LightningError::ConnectionError(err.to_string()))?;
 
@@ -124,6 +126,43 @@ impl LndNode {
             },
             price_converter: PriceConverter::new(),
         })
+    }
+
+    /// Converts hex string to a temporary file and returns the path
+    /// File stays alive until the returned NamedTempFile is dropped
+    fn hex_to_temp_file(hex_string: &str) -> Result<(NamedTempFile, PathBuf), std::io::Error> {
+        let bytes = hex::decode(hex_string).map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Invalid hex string: {}", e),
+            )
+        })?;
+
+        let mut temp_file = NamedTempFile::new()?;
+
+        temp_file.write_all(&bytes)?;
+        temp_file.flush()?;
+
+        let path = temp_file.path().to_path_buf();
+
+        Ok((temp_file, path))
+    }
+
+    /// Connect to LND using tonic_lnd with hex values
+    async fn connect_lnd_with_hex(
+        address: String,
+        cert_hex: String,
+        macaroon_hex: String,
+    ) -> Result<tonic_lnd::Client, Box<dyn std::error::Error>> {
+        let (cert_file, cert_path) = Self::hex_to_temp_file(&cert_hex)?;
+        let (macaroon_file, macaroon_path) = Self::hex_to_temp_file(&macaroon_hex)?;
+
+        let client = tonic_lnd::connect(address, cert_path, macaroon_path).await?;
+
+        drop(cert_file);
+        drop(macaroon_file);
+
+        Ok(client)
     }
 
     async fn stream_channel_events(&self) -> Result<Streaming<ChannelEventUpdate>, LightningError> {
@@ -1414,7 +1453,9 @@ impl LightningClient for LndNode {
         let response = client
             .wallet_balance(request)
             .await
-            .map_err(|e| LightningError::GetInfoError(format!("Failed to get wallet balance: {e}")))?
+            .map_err(|e| {
+                LightningError::GetInfoError(format!("Failed to get wallet balance: {e}"))
+            })?
             .into_inner();
 
         // Return confirmed balance in satoshis
@@ -2070,7 +2111,9 @@ impl LightningClient for ClnNode {
         let response = client
             .list_funds(request)
             .await
-            .map_err(|e| LightningError::GetInfoError(format!("Failed to get wallet balance: {e}")))?
+            .map_err(|e| {
+                LightningError::GetInfoError(format!("Failed to get wallet balance: {e}"))
+            })?
             .into_inner();
 
         // Sum up all confirmed outputs
@@ -2078,7 +2121,13 @@ impl LightningClient for ClnNode {
             .outputs
             .iter()
             .filter(|output| output.status == 1) // 1 = confirmed
-            .map(|output| output.amount_msat.as_ref().map(|amt| amt.msat / 1000).unwrap_or(0))
+            .map(|output| {
+                output
+                    .amount_msat
+                    .as_ref()
+                    .map(|amt| amt.msat / 1000)
+                    .unwrap_or(0)
+            })
             .sum();
 
         Ok(total_balance)

@@ -1,12 +1,21 @@
 //! Core business logic for the authentication system.
 
+use crate::api::common::ApiResponse;
 use crate::auth::models::*;
 use crate::config::Config;
+use crate::database::models::Credential;
 use crate::errors::{ServiceError, ServiceResult};
 use crate::repositories::account_repository::AccountRepository;
 use crate::repositories::credential_repository::CredentialRepository;
+use crate::services::node_manager::ConnectionRequest;
+use crate::services::node_manager::{ClnConnection, LndConnection};
 use crate::services::user_service::UserService;
-use crate::utils::jwt::{JwtUtils, NodeCredentials};
+use crate::utils::NodeId;
+use crate::utils::crypto::StringCrypto;
+use crate::utils::handlers_common::connect_to_event_stream;
+use crate::utils::handlers_common::extract_cln_tls_components;
+use crate::utils::handlers_common::parse_public_key;
+use crate::utils::jwt::JwtUtils;
 use sqlx::SqlitePool;
 use validator::Validate;
 
@@ -80,22 +89,17 @@ impl<'a> AuthService<'a> {
 
         // Check for existing node credentials and convert them to JWT format
         let credential_repo = CredentialRepository::new(self.pool);
-        let node_credentials =
-            if let Some(credential) = credential_repo.get_credential_by_account_id(&account_id).await? {
-                Some(NodeCredentials {
-                    node_id: credential.node_id,
-                    node_alias: credential.node_alias,
-                    node_type: credential.node_type.unwrap_or_else(|| "lnd".to_string()),
-                    macaroon: credential.macaroon,
-                    tls_cert: credential.tls_cert,
-                    client_cert: credential.client_cert,
-                    client_key: credential.client_key,
-                    ca_cert: credential.ca_cert,
-                    address: credential.address,
-                })
-            } else {
-                None
-            };
+        let node_credential_id = if let Some(node_credentials) = credential_repo
+            .get_credential_by_account_id(&account_id)
+            .await?
+        {
+            self.authenticate_event_handler(&node_credentials, &self.pool, &account.id, &user_id)
+                .await?;
+
+            Some(node_credentials.id)
+        } else {
+            None
+        };
 
         // Get user role name
         let role_name = self.get_user_role_name(&user_role_id).await?;
@@ -106,7 +110,7 @@ impl<'a> AuthService<'a> {
             account_id.clone(),
             role_name.clone(),
             role_access_level.clone(),
-            node_credentials,
+            node_credential_id,
         )?;
 
         let refresh_token = self
@@ -140,6 +144,86 @@ impl<'a> AuthService<'a> {
         })
     }
 
+    async fn authenticate_event_handler(
+        &self,
+        node_credentials: &Credential,
+        pool: &SqlitePool,
+        account_id: &String,
+        user_id: &String,
+    ) -> ServiceResult<()> {
+        let public_key = parse_public_key(&node_credentials.node_id).unwrap();
+        let tls_cert = StringCrypto::decrypt(&node_credentials.tls_cert).unwrap();
+        let macaroon = StringCrypto::decrypt(&node_credentials.macaroon).unwrap();
+
+        match node_credentials.node_type.as_deref() {
+            Some("lnd") => {
+                let connection_payload = ConnectionRequest::Lnd(LndConnection {
+                    id: NodeId::PublicKey(public_key),
+                    address: node_credentials.address.clone(),
+                    macaroon: macaroon.clone(),
+                    cert: tls_cert.clone(),
+                });
+
+                connect_to_event_stream(
+                    &connection_payload,
+                    &Some(account_id.clone()),
+                    &pool,
+                    &Some(user_id.clone()),
+                )
+                .await
+                .unwrap();
+                Ok(())
+            }
+            Some("cln") => {
+                tracing::info!(
+                    "Attempting to authenticate CLN node: {:?}",
+                    node_credentials.node_id
+                );
+                let (client_cert, client_key, ca_cert) =
+                    extract_cln_tls_components(&node_credentials.id, pool)
+                        .await
+                        .unwrap();
+
+                let connection_payload = ConnectionRequest::Cln(ClnConnection {
+                    id: NodeId::PublicKey(public_key),
+                    address: node_credentials.address.clone(),
+                    ca_cert,
+                    client_cert,
+                    client_key,
+                });
+                connect_to_event_stream(
+                    &connection_payload,
+                    &Some(account_id.clone()),
+                    &pool,
+                    &Some(user_id.clone()),
+                )
+                .await
+                .unwrap();
+                Ok(())
+            }
+            Some(_) => {
+                let error_response = ApiResponse::<()>::error(
+                    "Unsupported node type".to_string(),
+                    "unsupported_node_type",
+                    None,
+                );
+                Err(ServiceError::invalid_operation(
+                    serde_json::to_string(&error_response).unwrap(),
+                ))
+            }
+            None => {
+                let error_response = ApiResponse::<()>::error(
+                    "Node type not specified".to_string(),
+                    "missing_node_type",
+                    None,
+                );
+                Err(ServiceError::invalid_operation(
+                    serde_json::to_string(&error_response).unwrap(),
+                ))
+            }
+        }
+    }
+
     /// Refresh access token with existing node credentials
     pub async fn refresh_token(
         &self,
@@ -165,19 +249,9 @@ impl<'a> AuthService<'a> {
 
         // Check for existing node credentials
         let credential_repo = CredentialRepository::new(self.pool);
-        let node_credentials =
+        let node_credential_id =
             if let Some(credential) = credential_repo.get_credential_by_user_id(&user_id).await? {
-                Some(NodeCredentials {
-                    node_id: credential.node_id,
-                    node_alias: credential.node_alias,
-                    node_type: credential.node_type.unwrap_or_else(|| "lnd".to_string()),
-                    macaroon: credential.macaroon,
-                    tls_cert: credential.tls_cert,
-                    client_cert: credential.client_cert,
-                    client_key: credential.client_key,
-                    ca_cert: credential.ca_cert,
-                    address: credential.address,
-                })
+                Some(credential.id)
             } else {
                 None
             };
@@ -188,7 +262,7 @@ impl<'a> AuthService<'a> {
             user_account_id,
             self.get_user_role_name(&user_role_id).await?,
             role_access_level,
-            node_credentials,
+            node_credential_id,
         )?;
 
         Ok(RefreshTokenResponse {

@@ -3,8 +3,7 @@
 //! These functions process requests for payment data and return payment-specific information.
 
 use crate::utils::handlers_common::{
-    create_node_client, extract_node_credentials, handle_node_error, parse_payment_hash,
-    parse_public_key,
+    create_node_client, extract_node_credential_id, handle_node_error, parse_payment_hash,
 };
 use crate::utils::jwt::Claims;
 use crate::{
@@ -28,12 +27,12 @@ use validator::Validate;
 pub async fn get_payment_details(
     Extension(claims): Extension<Claims>,
     Path(payment_hash): Path<String>,
+    Extension(pool): Extension<sqlx::SqlitePool>,
 ) -> Result<Json<ApiResponse<PaymentDetails>>, (StatusCode, String)> {
     let payment_hash = parse_payment_hash(&payment_hash)?;
-    let node_credentials = extract_node_credentials(&claims)?;
-    let public_key = parse_public_key(&node_credentials.node_id)?;
+    let node_credential_id = extract_node_credential_id(&claims)?;
 
-    let node_client = create_node_client(node_credentials, public_key).await?;
+    let node_client = create_node_client(&node_credential_id, &pool).await?;
 
     let payment_details = node_client
         .get_payment_details(&payment_hash)
@@ -51,15 +50,15 @@ pub async fn get_payment_details(
 pub async fn list_payments(
     Extension(claims): Extension<Claims>,
     Query(filter): Query<PaymentFilter>,
+    Extension(pool): Extension<sqlx::SqlitePool>,
 ) -> Result<Json<ApiResponse<PaginatedData<PaymentSummary>>>, (StatusCode, String)> {
     if let Err(validation_errors) = filter.validate() {
         return Err(validation_error_response(validation_errors));
     }
 
-    let node_credentials = extract_node_credentials(&claims)?;
-    let public_key = parse_public_key(&node_credentials.node_id)?;
+    let node_credential_id = extract_node_credential_id(&claims)?;
 
-    let node_client = create_node_client(node_credentials, public_key).await?;
+    let node_client = create_node_client(&node_credential_id, &pool).await?;
 
     let all_payments = node_client
         .list_payments()

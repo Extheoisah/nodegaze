@@ -23,7 +23,7 @@ pub async fn create_account(
     Extension(pool): Extension<SqlitePool>,
     Json(payload): Json<CreateNewAccount>,
 ) -> Result<ResponseJson<ApiResponse<UserWithAccount>>, (StatusCode, String)> {
-    tracing::info!("Creating new account with payload: {:?}", payload);
+    tracing::info!("Creating new account");
 
     let service = AccountService::new(&pool);
 

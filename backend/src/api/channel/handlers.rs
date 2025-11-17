@@ -1,5 +1,5 @@
 use crate::utils::handlers_common::{
-    create_node_client, extract_node_credentials, handle_node_error, parse_public_key,
+    create_node_client, extract_node_credential_id, handle_node_error,
 };
 use crate::utils::jwt::Claims;
 use crate::{
@@ -21,12 +21,12 @@ use validator::Validate;
 pub async fn get_channel_info(
     Extension(claims): Extension<Claims>,
     Path(channel_id): Path<String>,
+    Extension(pool): Extension<sqlx::SqlitePool>,
 ) -> Result<Json<ApiResponse<ChannelDetails>>, (StatusCode, String)> {
     let scid = parse_short_channel_id(&channel_id)?;
-    let node_credentials = extract_node_credentials(&claims)?;
-    let public_key = parse_public_key(&node_credentials.node_id)?;
+    let node_credential_id = extract_node_credential_id(&claims)?;
 
-    let node_client = create_node_client(node_credentials, public_key).await?;
+    let node_client = create_node_client(&node_credential_id, &pool).await?;
 
     let channel_details = node_client
         .get_channel_info(&scid)
@@ -44,15 +44,15 @@ pub async fn get_channel_info(
 pub async fn list_channels(
     Extension(claims): Extension<Claims>,
     Query(filter): Query<ChannelFilter>,
+    Extension(pool): Extension<sqlx::SqlitePool>,
 ) -> Result<Json<ApiResponse<PaginatedData<ChannelSummary>>>, (StatusCode, String)> {
     if let Err(validation_errors) = filter.validate() {
         return Err(validation_error_response(validation_errors));
     }
 
-    let node_credentials = extract_node_credentials(&claims)?;
-    let public_key = parse_public_key(&node_credentials.node_id)?;
+    let node_credential_id = extract_node_credential_id(&claims)?;
 
-    let node_client = create_node_client(node_credentials, public_key).await?;
+    let node_client = create_node_client(&node_credential_id, &pool).await?;
 
     let channels = node_client
         .list_channels()
