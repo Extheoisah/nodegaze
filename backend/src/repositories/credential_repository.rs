@@ -59,9 +59,7 @@ impl<'a> CredentialRepository<'a> {
             ca_cert as "ca_cert?",
             is_active as "is_active!",
             created_at as "created_at!: DateTime<Utc>",
-            updated_at as "updated_at!: DateTime<Utc>",
-            is_deleted as "is_deleted!",
-            deleted_at as "deleted_at?: DateTime<Utc>"
+            updated_at as "updated_at!: DateTime<Utc>"
             "#,
             credential.id,
             credential.user_id,
@@ -83,22 +81,13 @@ impl<'a> CredentialRepository<'a> {
         Ok(credential)
     }
 
-    /// Retrieves credentials by their unique identifier.
-    ///
-    /// # Arguments
-    /// * `id` - Credential ID (UUID format)
-    ///
-    /// # Returns
-    /// `Some(Credential)` if found and not deleted, `None` otherwise
-    ///
-    /// # Security
     /// Retrieves credentials associated with a specific user.
     ///
     /// # Arguments
     /// * `user_id` - User ID (UUID format)
     ///
     /// # Returns
-    /// `Some(Credential)` if found and not deleted, `None` otherwise
+    /// `Some(Credential)` if found, `None` otherwise
     pub async fn get_credential_by_user_id(&self, user_id: &str) -> Result<Option<Credential>> {
         let credential = sqlx::query_as!(
             Credential,
@@ -118,10 +107,8 @@ impl<'a> CredentialRepository<'a> {
                 ca_cert as "ca_cert?",
                 is_active as "is_active!",
                 created_at as "created_at!: DateTime<Utc>",
-                updated_at as "updated_at!: DateTime<Utc>",
-                is_deleted as "is_deleted!",
-                deleted_at as "deleted_at?: DateTime<Utc>"
-                FROM credentials WHERE user_id = ? AND is_deleted = 0
+                updated_at as "updated_at!: DateTime<Utc>"
+                FROM credentials WHERE user_id = ?
                 "#,
             user_id
         )
@@ -137,8 +124,11 @@ impl<'a> CredentialRepository<'a> {
     /// * `account_id` - Account ID (UUID format)
     ///
     /// # Returns
-    /// `Some(Credential)` if found and not deleted, `None` otherwise
-    pub async fn get_credential_by_account_id(&self, account_id: &str) -> Result<Option<Credential>> {
+    /// `Some(Credential)` if found, `None` otherwise
+    pub async fn get_credential_by_account_id(
+        &self,
+        account_id: &str,
+    ) -> Result<Option<Credential>> {
         let credential = sqlx::query_as!(
             Credential,
             r#"
@@ -157,10 +147,8 @@ impl<'a> CredentialRepository<'a> {
                 ca_cert as "ca_cert?",
                 is_active as "is_active!",
                 created_at as "created_at!: DateTime<Utc>",
-                updated_at as "updated_at!: DateTime<Utc>",
-                is_deleted as "is_deleted!",
-                deleted_at as "deleted_at?: DateTime<Utc>"
-                FROM credentials WHERE account_id = ? AND is_deleted = 0
+                updated_at as "updated_at!: DateTime<Utc>"
+                FROM credentials WHERE account_id = ?
                 "#,
             account_id
         )
@@ -170,24 +158,22 @@ impl<'a> CredentialRepository<'a> {
         Ok(credential)
     }
 
-    /// Marks a credential as deleted (soft deletion).
+    /// Deletes a credential permanently from the database.
     ///
     /// # Arguments
-    /// * `id` - Credential ID to deactivate
+    /// * `id` - Credential ID to delete
     ///
     /// # Effects
-    /// - Sets `is_deleted` flag to true
-    /// - Records deletion timestamp
-    /// - Credential remains in database but won't appear in normal queries
+    /// - Permanently removes credential from database
+    /// - Cannot be recovered after deletion
     ///
     /// # Security
-    /// - Prevents credential from being used while preserving audit trail
+    /// - Ensures credential cannot be used after deletion
     pub async fn delete_credential(&self, id: &str) -> Result<()> {
         sqlx::query!(
             r#"
-            UPDATE credentials
-            SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND is_deleted = 0
+            DELETE FROM credentials
+            WHERE id = ?
             "#,
             id
         )

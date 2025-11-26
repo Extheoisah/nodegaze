@@ -98,12 +98,6 @@ Run database migrations:
 sqlx migrate run --source backend/migrations
 ```
 
-Generate offline SQLx data:
-
-```bash
-cargo sqlx prepare --workspace
-```
-
 #### Step 5: Build and Run
 
 Using the provided Makefile (recommended):

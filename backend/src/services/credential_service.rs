@@ -99,14 +99,14 @@ impl<'a> CredentialService<'a> {
     ///
     /// # Errors
     /// Returns `ServiceError::NotFound` if credential doesn't exist
-    pub async fn get_credential_required(&self, id: &str) -> ServiceResult<Credential> {
-        let repo = CredentialRepository::new(self.pool);
-        let credential = repo
-            .get_credential_by_id(id)
-            .await?
-            .ok_or_else(|| ServiceError::not_found("Credential", id))?;
-        Ok(credential)
-    }
+    // pub async fn get_credential_required(&self, id: &str) -> ServiceResult<Credential> {
+    //     let repo = CredentialRepository::new(self.pool);
+    //     let credential = repo
+    //         .get_credential_by_id(id)
+    //         .await?
+    //         .ok_or_else(|| ServiceError::not_found("Credential", id))?;
+    //     Ok(credential)
+    // }
 
     /// Retrieves credentials by user ID with existence verification.
     ///
