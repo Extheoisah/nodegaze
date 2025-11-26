@@ -81,43 +81,6 @@ impl<'a> CredentialRepository<'a> {
         Ok(credential)
     }
 
-    /// Retrieves credentials by their unique identifier.
-    ///
-    /// # Arguments
-    /// * `id` - Credential ID (UUID format)
-    ///
-    /// # Returns
-    /// `Some(Credential)` if found, `None` otherwise
-    pub async fn get_credential_by_id(&self, id: &str) -> Result<Option<Credential>> {
-        let credential = sqlx::query_as!(
-            Credential,
-            r#"
-                SELECT
-                id as "id!",
-                user_id as "user_id!",
-                account_id as "account_id!",
-                node_id as "node_id!",
-                node_alias as "node_alias!",
-                macaroon as "macaroon!",
-                tls_cert as "tls_cert!",
-                address as "address!",
-                node_type as "node_type?",
-                client_cert as "client_cert?",
-                client_key as "client_key?",
-                ca_cert as "ca_cert?",
-                is_active as "is_active!",
-                created_at as "created_at!: DateTime<Utc>",
-                updated_at as "updated_at!: DateTime<Utc>"
-                FROM credentials WHERE id = ?
-                "#,
-            id
-        )
-        .fetch_optional(self.pool)
-        .await?;
-
-        Ok(credential)
-    }
-
     /// Retrieves credentials associated with a specific user.
     ///
     /// # Arguments
