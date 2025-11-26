@@ -3,21 +3,20 @@ use crate::api::common::ApiResponse;
 use crate::database::models::CreateCredential;
 use crate::errors::LightningError;
 use crate::repositories::credential_repository::CredentialRepository;
-use crate::services::event_manager::{EventCollector, EventHandler, NodeSpecificEvent};
+use crate::services::credential_service::CredentialService;
 use crate::services::node_manager::LightningClient;
 use crate::services::node_manager::{
     ClnConnection, ClnNode, ConnectionRequest, LndConnection, LndNode,
 };
-use crate::utils::jwt::{Claims, JwtUtils, NodeCredentials};
+use crate::utils::crypto::StringCrypto;
+use crate::utils::handlers_common::connect_to_event_stream;
+use crate::utils::jwt::{Claims, JwtUtils};
 use crate::utils::{NodeId, NodeInfo};
 use axum::{
     extract::{Extension, Json},
     http::StatusCode,
 };
 use sqlx::SqlitePool;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use tokio::sync::mpsc;
 
 use uuid::Uuid;
 
@@ -37,124 +36,22 @@ pub async fn authenticate_node(
     Json(payload): Json<ConnectionRequest>,
 ) -> Result<Json<ApiResponse<NodeAuthResponse>>, (StatusCode, String)> {
     // First authenticate with the node
-    let node_info = match &payload {
-        ConnectionRequest::Lnd(lnd_conn) => {
-            tracing::info!("Attempting to authenticate LND node: {:?}", lnd_conn.id);
-            match LndNode::new(lnd_conn.clone()).await {
-                Ok(lnd_node) => {
-                    tracing::info!("LND node authenticated: {:?}", lnd_node.info);
-
-                    let info = lnd_node.info.clone();
-
-                    let (sender, receiver) = mpsc::channel::<NodeSpecificEvent>(32);
-
-                    let collector = EventCollector::new(sender);
-                    let lnd_node_: Arc<Mutex<Box<dyn LightningClient + Send + Sync + 'static>>> =
-                        Arc::new(Mutex::new(Box::new(lnd_node)));
-
-                    collector.start_sending(info.pubkey, lnd_node_).await;
-
-                    // Start processing events with database context
-                    let handler = if let Some(user_claims) = &claims {
-                        tracing::info!(
-                            "Creating handler with database context for user: {}",
-                            user_claims.sub
-                        );
-                        EventHandler::with_context(
-                            pool.clone(),
-                            user_claims.account_id.clone(),
-                            user_claims.sub.clone(),
-                            info.pubkey.to_string(),
-                            info.alias.clone(),
-                        )
-                    } else {
-                        tracing::info!("Creating handler without database context");
-                        EventHandler::new()
-                    };
-                    handler.start_receiving(receiver);
-
-                    info
-                }
-                Err(e) => {
-                    tracing::error!("Failed to authenticate LND node: {}", e);
-                    let error_response = ApiResponse::<()>::error(
-                        format!("LND authentication failed: {e}"),
-                        "node_authentication_error",
-                        None,
-                    );
-                    return Err((
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        serde_json::to_string(&error_response).unwrap(),
-                    ));
-                }
-            }
-        }
-        ConnectionRequest::Cln(cln_conn) => {
-            tracing::info!("Attempting to authenticate CLN node: {:?}", cln_conn.id);
-            match ClnNode::new(cln_conn.clone()).await {
-                Ok(cln_node) => {
-                    tracing::info!("CLN node authenticated: {:?}", cln_node.info);
-
-                    let info = cln_node.info.clone();
-
-                    let (sender, receiver) = mpsc::channel::<NodeSpecificEvent>(32);
-
-                    let collector = EventCollector::new(sender);
-                    let cln_node_: Arc<Mutex<Box<dyn LightningClient + Send + Sync + 'static>>> =
-                        Arc::new(Mutex::new(Box::new(cln_node)));
-
-                    collector.start_sending(info.pubkey, cln_node_).await;
-
-                    // Start processing events with database context
-                    let handler = if let Some(user_claims) = &claims {
-                        tracing::info!(
-                            "Creating CLN handler with database context for user: {}",
-                            user_claims.sub
-                        );
-                        EventHandler::with_context(
-                            pool.clone(),
-                            user_claims.account_id.clone(),
-                            user_claims.sub.clone(),
-                            info.pubkey.to_string(),
-                            info.alias.clone(),
-                        )
-                    } else {
-                        tracing::info!("Creating CLN handler without database context");
-                        EventHandler::new()
-                    };
-
-                    handler.start_receiving(receiver);
-
-                    info
-                }
-                Err(e) => {
-                    tracing::error!("Failed to authenticate CLN node: {}", e);
-                    let error_response = ApiResponse::<()>::error(
-                        format!("CLN authentication failed: {e}"),
-                        "node_authentication_error",
-                        None,
-                    );
-                    return Err((
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        serde_json::to_string(&error_response).unwrap(),
-                    ));
-                }
-            }
-        }
+    let (account_id, user_id) = if let Some(ref claims) = claims {
+        (Some(claims.account_id.clone()), Some(claims.sub.clone()))
+    } else {
+        (None, None)
     };
+    let node_info = connect_to_event_stream(&payload, &account_id, &pool, &user_id).await?;
 
     // If user is authenticated (has JWT token), store the credentials
     let (credential_stored, credential_id, new_access_token) = if let Some(user_claims) = claims {
         match store_node_credentials(&pool, &user_claims, &payload, &node_info).await {
             Ok(credential_id) => {
                 tracing::info!("Node credentials stored for user: {}", user_claims.sub);
-                
-                let new_token = generate_new_token_with_credentials(
-                    &user_claims,
-                    &payload,
-                    &node_info,
-                ).ok();
-                
+
+                let new_token =
+                    generate_new_token_with_credentials(&user_claims, &credential_id).ok();
+
                 (true, Some(credential_id), new_token)
             }
             Err(e) => {
@@ -229,14 +126,17 @@ async fn store_node_credentials(
         };
 
     // Create new credential record with all required fields
+    let encrypted_macaroon = StringCrypto::encrypt(&macaroon).unwrap();
+    let encrypted_tls_cert = StringCrypto::encrypt(&tls_cert).unwrap();
+
     let create_credential = CreateCredential {
         id: Uuid::now_v7().to_string(),
         user_id: claims.sub.clone(),
         account_id: claims.account_id.clone(),
         node_id: node_info.pubkey.to_string(),
         node_alias: node_info.alias.clone(),
-        macaroon,
-        tls_cert,
+        macaroon: encrypted_macaroon,
+        tls_cert: encrypted_tls_cert,
         address,
         node_type,
         client_cert,
@@ -255,45 +155,9 @@ async fn store_node_credentials(
 /// Generate new JWT token with node credentials included
 fn generate_new_token_with_credentials(
     claims: &Claims,
-    connection_request: &ConnectionRequest,
-    node_info: &NodeInfo,
+    credential_id: &String,
 ) -> Result<String, String> {
-    let jwt_utils = JwtUtils::new()
-        .map_err(|e| format!("Failed to create JWT utils: {e}"))?;
-
-    let (node_type, macaroon, tls_cert, address, client_cert, client_key, ca_cert) =
-        match connection_request {
-            ConnectionRequest::Lnd(lnd_conn) => (
-                "lnd".to_string(),
-                lnd_conn.macaroon.clone(),
-                lnd_conn.cert.clone(),
-                lnd_conn.address.clone(),
-                None,
-                None,
-                None,
-            ),
-            ConnectionRequest::Cln(cln_conn) => (
-                "cln".to_string(),
-                "".to_string(),
-                "".to_string(),
-                cln_conn.address.clone(),
-                Some(cln_conn.client_cert.clone()),
-                Some(cln_conn.client_key.clone()),
-                Some(cln_conn.ca_cert.clone()),
-            ),
-        };
-
-    let node_credentials = NodeCredentials {
-        node_id: node_info.pubkey.to_string(),
-        node_alias: node_info.alias.clone(),
-        node_type,
-        macaroon,
-        tls_cert,
-        address,
-        client_cert,
-        client_key,
-        ca_cert,
-    };
+    let jwt_utils = JwtUtils::new().map_err(|e| format!("Failed to create JWT utils: {e}"))?;
 
     jwt_utils
         .generate_token(
@@ -301,7 +165,7 @@ fn generate_new_token_with_credentials(
             claims.account_id.clone(),
             claims.role.clone(),
             claims.role_access_level.clone(),
-            Some(node_credentials),
+            Some(credential_id.clone()),
         )
         .map_err(|e| format!("Failed to generate token: {e}"))
 }
@@ -310,17 +174,36 @@ fn generate_new_token_with_credentials(
 #[axum::debug_handler]
 pub async fn get_node_info_jwt(
     Extension(claims): Extension<Claims>,
+    Extension(pool): Extension<SqlitePool>,
 ) -> Result<Json<NodeInfo>, (StatusCode, String)> {
-    let node_credentials = claims.node_credentials().ok_or_else(|| {
+    let node_credential_id = claims.node_credential_id().ok_or_else(|| {
         (
             StatusCode::BAD_REQUEST,
             "No node credentials found in token. Please authenticate your node first.".to_string(),
         )
     })?;
 
+    let service = CredentialService::new(&pool);
+
+    let node_credentials = service
+        .get_credential_required(&node_credential_id.as_str())
+        .await
+        .map_err(|e| {
+            tracing::error!("Node credential not found {}: {}", node_credential_id, e);
+            let error_response = ApiResponse::<()>::error(
+                "Node credential not found".to_string(),
+                "Node credential not found",
+                None,
+            );
+            (
+                StatusCode::NOT_FOUND,
+                serde_json::to_string(&error_response).unwrap(),
+            )
+        })?;
+
     // Create connection request based on node type
-    match node_credentials.node_type.as_str() {
-        "lnd" => {
+    match node_credentials.node_type.as_deref() {
+        Some("lnd") => {
             let lnd_conn = LndConnection {
                 id: NodeId::PublicKey(
                     node_credentials
@@ -344,7 +227,7 @@ pub async fn get_node_info_jwt(
                 }
             }
         }
-        "cln" => {
+        Some("cln") => {
             let client_cert = node_credentials.client_cert.as_ref().ok_or_else(|| {
                 (
                     StatusCode::BAD_REQUEST,
@@ -390,7 +273,8 @@ pub async fn get_node_info_jwt(
                 }
             }
         }
-        _ => Err((StatusCode::BAD_REQUEST, "Unsupported node type".to_string())),
+        Some(_) => Err((StatusCode::BAD_REQUEST, "Unsupported node type".to_string())),
+        None => Err((StatusCode::BAD_REQUEST, "Node type is missing".to_string())),
     }
 }
 
@@ -433,13 +317,15 @@ pub struct WalletBalanceResponse {
 #[axum::debug_handler]
 pub async fn get_wallet_balance(
     Extension(claims): Extension<Claims>,
+    Extension(pool): Extension<SqlitePool>,
 ) -> Result<Json<ApiResponse<WalletBalanceResponse>>, (StatusCode, String)> {
-    use crate::utils::handlers_common::{create_node_client, extract_node_credentials, handle_node_error, parse_public_key};
-    
-    let node_credentials = extract_node_credentials(&claims)?;
-    let public_key = parse_public_key(&node_credentials.node_id)?;
-    
-    let node_client = create_node_client(node_credentials, public_key).await?;
+    use crate::utils::handlers_common::{
+        create_node_client, extract_node_credential_id, handle_node_error,
+    };
+
+    let node_credential_id = extract_node_credential_id(&claims)?;
+
+    let node_client = create_node_client(&node_credential_id, &pool).await?;
 
     let balance = node_client
         .get_wallet_balance()

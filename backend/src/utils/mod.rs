@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
+pub mod crypto;
 pub mod generate_random_string;
 pub mod handlers_common;
 pub mod jwt;

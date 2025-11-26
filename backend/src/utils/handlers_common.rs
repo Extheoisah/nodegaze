@@ -1,18 +1,24 @@
 use crate::api::common::ApiResponse;
 use crate::errors::LightningError;
+use crate::services::credential_service::CredentialService;
+use crate::services::event_manager::{EventCollector, EventHandler, NodeSpecificEvent};
 use crate::services::node_manager::{
-    ClnConnection, ClnNode, LightningClient, LndConnection, LndNode,
+    ClnConnection, ClnNode, ConnectionRequest, LightningClient, LndConnection, LndNode,
 };
-use crate::utils::NodeId;
-use crate::utils::jwt::{Claims, NodeCredentials};
+use crate::utils::jwt::Claims;
+use crate::utils::{NodeId, NodeInfo};
 use axum::http::StatusCode;
 use bitcoin::secp256k1::PublicKey;
 use lightning::ln::PaymentHash;
+use std::result::Result::Ok;
 use std::str::FromStr;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use tokio::sync::mpsc;
 
 /// Extract credentials from claims
-pub fn extract_node_credentials(claims: &Claims) -> Result<&NodeCredentials, (StatusCode, String)> {
-    claims.node_credentials().ok_or_else(|| {
+pub fn extract_node_credential_id(claims: &Claims) -> Result<&String, (StatusCode, String)> {
+    claims.node_credential_id().ok_or_else(|| {
         let error_response = ApiResponse::<()>::error(
             "No node credentials found in token".to_string(),
             "missing_credentials",
@@ -27,11 +33,31 @@ pub fn extract_node_credentials(claims: &Claims) -> Result<&NodeCredentials, (St
 
 /// Creates and returns a Lightning client (LND or CLN) based on the provided credentials.
 pub async fn create_node_client(
-    node_credentials: &NodeCredentials,
-    public_key: PublicKey,
+    node_credential_id: &String,
+    pool: &sqlx::SqlitePool,
 ) -> Result<Box<dyn LightningClient>, (StatusCode, String)> {
-    match node_credentials.node_type.as_str() {
-        "lnd" => {
+    let service = CredentialService::new(&pool);
+
+    let node_credentials = service
+        .get_credential_required(&node_credential_id.as_str())
+        .await
+        .map_err(|e| {
+            tracing::error!("Node credential not found {}: {}", node_credential_id, e);
+            let error_response = ApiResponse::<()>::error(
+                "Node credential not found".to_string(),
+                "node_credential_not_found",
+                None,
+            );
+            (
+                StatusCode::NOT_FOUND,
+                serde_json::to_string(&error_response).unwrap(),
+            )
+        })?;
+
+    let public_key = parse_public_key(&node_credentials.node_id)?;
+
+    match node_credentials.node_type.as_deref() {
+        Some("lnd") => {
             let lnd_node = LndNode::new(LndConnection {
                 id: NodeId::PublicKey(public_key),
                 address: node_credentials.address.clone(),
@@ -43,8 +69,9 @@ pub async fn create_node_client(
 
             Ok(Box::new(lnd_node))
         }
-        "cln" => {
-            let (client_cert, client_key, ca_cert) = extract_cln_tls_components(node_credentials)?;
+        Some("cln") => {
+            let (client_cert, client_key, ca_cert) =
+                extract_cln_tls_components(node_credential_id, pool).await?;
 
             let cln_node = ClnNode::new(ClnConnection {
                 id: NodeId::PublicKey(public_key),
@@ -58,10 +85,21 @@ pub async fn create_node_client(
 
             Ok(Box::new(cln_node))
         }
-        _ => {
+        Some(_) => {
             let error_response = ApiResponse::<()>::error(
                 "Unsupported node type".to_string(),
                 "unsupported_node_type",
+                None,
+            );
+            Err((
+                StatusCode::BAD_REQUEST,
+                serde_json::to_string(&error_response).unwrap(),
+            ))
+        }
+        None => {
+            let error_response = ApiResponse::<()>::error(
+                "Node type not specified".to_string(),
+                "missing_node_type",
                 None,
             );
             Err((
@@ -119,9 +157,28 @@ pub fn parse_public_key(node_id: &str) -> Result<PublicKey, (StatusCode, String)
 }
 
 /// Extract TLS fields for CLN
-pub fn extract_cln_tls_components(
-    node_credentials: &NodeCredentials,
+pub async fn extract_cln_tls_components(
+    node_credential_id: &String,
+    pool: &sqlx::SqlitePool,
 ) -> Result<(String, String, String), (StatusCode, String)> {
+    let service = CredentialService::new(&pool);
+
+    let node_credentials = service
+        .get_credential_required(&node_credential_id.as_str())
+        .await
+        .map_err(|e| {
+            tracing::error!("Node credential not found {}: {}", node_credential_id, e);
+            let error_response = ApiResponse::<()>::error(
+                "Node credential not found".to_string(),
+                "node_credential_not_found",
+                None,
+            );
+            (
+                StatusCode::NOT_FOUND,
+                serde_json::to_string(&error_response).unwrap(),
+            )
+        })?;
+
     let client_cert = node_credentials.client_cert.as_ref().ok_or_else(|| {
         let error_response = ApiResponse::<()>::error(
             "Missing client certificate for CLN".to_string(),
@@ -173,4 +230,125 @@ pub fn handle_node_error(e: LightningError, operation: &str) -> (StatusCode, Str
         StatusCode::INTERNAL_SERVER_ERROR,
         serde_json::to_string(&error_response).unwrap(),
     )
+}
+
+/// Connect to event stream
+pub async fn connect_to_event_stream(
+    connection_request: &ConnectionRequest,
+    account_id: &Option<String>,
+    pool: &sqlx::SqlitePool,
+    user_id: &Option<String>,
+) -> Result<NodeInfo, (StatusCode, String)> {
+    match &connection_request {
+        ConnectionRequest::Lnd(lnd_conn) => {
+            tracing::info!("Attempting to authenticate LND node: {:?}", lnd_conn.id);
+            match LndNode::new(lnd_conn.clone()).await {
+                Ok(lnd_node) => {
+                    tracing::info!("LND node authenticated: {:?}", lnd_node.info);
+
+                    let info = lnd_node.info.clone();
+
+                    let (sender, receiver) = mpsc::channel::<NodeSpecificEvent>(32);
+
+                    let collector = EventCollector::new(sender);
+                    let lnd_node_: Arc<Mutex<Box<dyn LightningClient + Send + Sync + 'static>>> =
+                        Arc::new(Mutex::new(Box::new(lnd_node)));
+
+                    collector.start_sending(info.pubkey, lnd_node_).await;
+
+                    // Start processing events with database context
+                    let handler = match (account_id, user_id) {
+                        (Some(acc_id), Some(u_id)) => {
+                            tracing::info!(
+                                "Creating handler with database context for user: {}",
+                                u_id
+                            );
+                            EventHandler::with_context(
+                                pool.clone(),
+                                acc_id.clone(),
+                                u_id.clone(),
+                                info.pubkey.to_string(),
+                                info.alias.clone(),
+                            )
+                        }
+                        _ => {
+                            tracing::info!("Creating handler without database context");
+                            EventHandler::new()
+                        }
+                    };
+
+                    handler.start_receiving(receiver);
+
+                    Ok(info)
+                }
+                Err(e) => {
+                    tracing::error!("Failed to authenticate LND node: {}", e);
+                    let error_response = ApiResponse::<()>::error(
+                        format!("LND authentication failed: {e}"),
+                        "node_authentication_error",
+                        None,
+                    );
+                    Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        serde_json::to_string(&error_response).unwrap(),
+                    ))
+                }
+            }
+        }
+        ConnectionRequest::Cln(cln_conn) => {
+            tracing::info!("Attempting to authenticate CLN node: {:?}", cln_conn.id);
+            match ClnNode::new(cln_conn.clone()).await {
+                Ok(cln_node) => {
+                    tracing::info!("CLN node authenticated: {:?}", cln_node.info);
+
+                    let info = cln_node.info.clone();
+
+                    let (sender, receiver) = mpsc::channel::<NodeSpecificEvent>(32);
+
+                    let collector = EventCollector::new(sender);
+                    let cln_node_: Arc<Mutex<Box<dyn LightningClient + Send + Sync + 'static>>> =
+                        Arc::new(Mutex::new(Box::new(cln_node)));
+
+                    collector.start_sending(info.pubkey, cln_node_).await;
+
+                    // Start processing events with database context
+                    let handler = match (account_id, user_id) {
+                        (Some(acc_id), Some(u_id)) => {
+                            tracing::info!(
+                                "Creating handler with database context for user: {}",
+                                u_id
+                            );
+                            EventHandler::with_context(
+                                pool.clone(),
+                                acc_id.clone(),
+                                u_id.clone(),
+                                info.pubkey.to_string(),
+                                info.alias.clone(),
+                            )
+                        }
+                        _ => {
+                            tracing::info!("Creating handler without database context");
+                            EventHandler::new()
+                        }
+                    };
+
+                    handler.start_receiving(receiver);
+
+                    Ok(info)
+                }
+                Err(e) => {
+                    tracing::error!("Failed to authenticate CLN node: {}", e);
+                    let error_response = ApiResponse::<()>::error(
+                        format!("CLN authentication failed: {e}"),
+                        "node_authentication_error",
+                        None,
+                    );
+                    Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        serde_json::to_string(&error_response).unwrap(),
+                    ))
+                }
+            }
+        }
+    }
 }

@@ -14,6 +14,7 @@ pub struct Config {
     pub jwt_secret: String,
     pub jwt_expires_in_seconds: u64,
     pub server_port: u16,
+    pub encryption_key: String,
 
     // Email configuration
     pub smtp_host: Option<String>,
@@ -54,6 +55,8 @@ impl Config {
             .parse::<u16>()
             .context("SERVER_PORT must be a valid number")?;
 
+        let encryption_key = env::var("ENCRYPTION_KEY").context("ENCRYPTION_KEY not set")?;
+
         // Optional email configuration
         let smtp_host = env::var("SMTP_HOST").ok();
         let smtp_port = env::var("SMTP_PORT").ok().and_then(|p| p.parse().ok());
@@ -71,6 +74,7 @@ impl Config {
             jwt_secret,
             jwt_expires_in_seconds,
             server_port,
+            encryption_key,
             smtp_host,
             smtp_port,
             smtp_username,

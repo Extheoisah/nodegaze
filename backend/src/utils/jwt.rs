@@ -22,26 +22,12 @@ pub struct Claims {
     pub role: String,
     /// Role access level
     pub role_access_level: RoleAccessLevel,
-    /// Node credentials (optional, now unencrypted)
-    pub node_credentials: Option<NodeCredentials>,
+    /// Node credential id (optional, now unencrypted)
+    pub node_credential_id: Option<String>,
     /// Token expiration timestamp
     pub exp: usize,
     /// Token issued at timestamp
     pub iat: usize,
-}
-
-/// Node credentials stored in JWT (now unencrypted for simplicity)
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct NodeCredentials {
-    pub node_id: String,
-    pub node_alias: String,
-    pub node_type: String, // "lnd" or "cln"
-    pub macaroon: String,
-    pub tls_cert: String,
-    pub client_cert: Option<String>, // For CLN
-    pub client_key: Option<String>,  // For CLN
-    pub ca_cert: Option<String>,     // For CLN
-    pub address: String,
 }
 
 /// JWT token utility for creating and validating tokens
@@ -77,7 +63,7 @@ impl JwtUtils {
         account_id: String,
         role: String,
         role_access_level: RoleAccessLevel,
-        node_credentials: Option<NodeCredentials>,
+        node_credential_id: Option<String>,
     ) -> Result<String, ServiceError> {
         // Get expires_in from config
         let config = Config::from_env()
@@ -92,7 +78,7 @@ impl JwtUtils {
             account_id,
             role,
             role_access_level,
-            node_credentials,
+            node_credential_id,
             exp: exp.timestamp() as usize,
             iat: now.timestamp() as usize,
         };
@@ -122,7 +108,7 @@ impl JwtUtils {
             account_id: String::new(), // Refresh tokens don't need account info
             role: String::new(),
             role_access_level,
-            node_credentials: None,
+            node_credential_id: None,
             exp: exp.timestamp() as usize,
             iat: now.timestamp() as usize,
         };
@@ -139,10 +125,10 @@ impl Claims {
     }
 
     pub fn has_node_credentials(&self) -> bool {
-        self.node_credentials.is_some()
+        self.node_credential_id.is_some()
     }
 
-    pub fn node_credentials(&self) -> Option<&NodeCredentials> {
-        self.node_credentials.as_ref()
+    pub fn node_credential_id(&self) -> Option<&String> {
+        self.node_credential_id.as_ref()
     }
 }
