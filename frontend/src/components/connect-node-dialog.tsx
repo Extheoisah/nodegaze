@@ -13,7 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSession } from "next-auth/react";
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from "@tanstack/react-query";
 
 interface ConnectNodeDialogProps {
   onSuccess?: () => void;
@@ -119,23 +119,23 @@ export function ConnectNodeDialog({ onSuccess }: ConnectNodeDialogProps) {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="macaroonPath">Macaroon Path</Label>
+              <Label htmlFor="macaroonPath">Macaroon Hex</Label>
               <Input
                 id="macaroonPath"
                 name="macaroonPath"
                 type="text"
-                placeholder="/home/user/.lnd/data/chain/bitcoin/mainnet/admin.macaroon"
+                placeholder="2d2d2d2d2d424547494e2043455254494646736478375676385698"
                 required
                 disabled={isLoading}
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="tlsCertPath">TLS Certificate Path</Label>
+              <Label htmlFor="tlsCertPath">TLS Certificate Hex</Label>
               <Input
                 id="tlsCertPath"
                 name="tlsCertPath"
                 type="text"
-                placeholder="/home/user/.lnd/tls.cert"
+                placeholder="2d2d2d2d2d424547494e2043455254494646736478375676385698"
                 required
                 disabled={isLoading}
               />
