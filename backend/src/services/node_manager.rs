@@ -47,8 +47,8 @@ use tonic::transport::{Certificate, Channel, ClientTlsConfig, Identity};
 use tonic_lnd::{
     Client,
     lnrpc::{
-        ChannelEventSubscription, ChannelEventUpdate, ChannelGraphRequest, GetInfoRequest, Invoice,
-        InvoiceSubscription, ListChannelsRequest, ListInvoiceRequest, ListPaymentsRequest,
+        ChannelEventSubscription, ChannelEventUpdate, GetInfoRequest, Invoice, InvoiceSubscription,
+        ListChannelsRequest, ListInvoiceRequest, ListPaymentsRequest,
         channel_event_update::{Channel as EventChannel, UpdateType as LndChannelUpdateType},
         invoice::InvoiceState,
         payment::PaymentStatus,
@@ -786,34 +786,50 @@ impl LightningClient for LndNode {
             .map_err(|err| LightningError::ChannelError(err.to_string()))?
             .into_inner();
 
-        let graph_response = lightning_stub
-            .describe_graph(ChannelGraphRequest {
-                include_unannounced: false,
-            })
-            .await
-            .map_err(|err| LightningError::GetGraphError(err.to_string()))?
-            .into_inner();
-
+        // Instead of fetching the entire graph (which can be 14MB+), fetch individual
+        // channel info for each of our channels. This is much more efficient.
         let mut last_updates: HashMap<u64, u64> = HashMap::new();
+        // noting this here so we can scale this better for folks that have more channels and  node graph.
+        for channel in &list_channels_response.channels {
+            // Only fetch graph data for public channels (private channels won't be in the graph)
+            if !channel.private {
+                match lightning_stub
+                    .get_chan_info(tonic_lnd::lnrpc::ChanInfoRequest {
+                        chan_id: channel.chan_id,
+                    })
+                    .await
+                {
+                    Ok(response) => {
+                        let chan_info = response.into_inner();
+                        let mut max_last_update = 0u64;
 
-        for edge in graph_response.edges.into_iter() {
-            let mut max_last_update = 0u64;
+                        if let Some(node1_policy) = &chan_info.node1_policy {
+                            if node1_policy.last_update > 0 {
+                                max_last_update =
+                                    max_last_update.max(node1_policy.last_update as u64);
+                            }
+                        }
 
-            if let Some(node1_policy) = &edge.node1_policy {
-                if node1_policy.last_update > 0 {
-                    max_last_update = max_last_update.max(node1_policy.last_update as u64);
+                        if let Some(node2_policy) = &chan_info.node2_policy {
+                            if node2_policy.last_update > 0 {
+                                max_last_update =
+                                    max_last_update.max(node2_policy.last_update as u64);
+                            }
+                        }
+
+                        if max_last_update > 0 {
+                            last_updates.insert(channel.chan_id, max_last_update);
+                        }
+                    }
+                    Err(e) => {
+                        // Log but don't fail - channel might not be announced yet
+                        tracing::debug!(
+                            "Failed to get channel info for {}: {}",
+                            channel.chan_id,
+                            e
+                        );
+                    }
                 }
-            }
-
-            if let Some(node2_policy) = &edge.node2_policy {
-                if node2_policy.last_update > 0 {
-                    max_last_update = max_last_update.max(node2_policy.last_update as u64);
-                }
-            }
-
-            if max_last_update > 0 {
-                let entry = last_updates.entry(edge.channel_id).or_insert(0);
-                *entry = (*entry).max(max_last_update);
             }
         }
 
@@ -876,19 +892,16 @@ impl LightningClient for LndNode {
                     LightningError::ChannelError(format!("Invalid remote pubkey: {err}"))
                 })?;
 
-                // Get policies from describe_graph
-                let (node1_policy, node2_policy) = match lightning_stub
-                    .describe_graph(ChannelGraphRequest {
-                        include_unannounced: false,
-                    })
-                    .await
-                {
-                    Ok(graph_response) => {
-                        let edges = graph_response.into_inner().edges;
-                        if let Some(channel_edge) = edges
-                            .into_iter()
-                            .find(|channel_edge| channel_edge.channel_id == channel_id.0)
-                        {
+                // Get policies from get_chan_info (instead of fetching entire graph)
+                let (node1_policy, node2_policy) = if !channel.private {
+                    match lightning_stub
+                        .get_chan_info(tonic_lnd::lnrpc::ChanInfoRequest {
+                            chan_id: channel_id.0,
+                        })
+                        .await
+                    {
+                        Ok(response) => {
+                            let channel_edge = response.into_inner();
                             let node1_pubkey = PublicKey::from_str(&channel_edge.node1_pub)
                                 .unwrap_or(remote_pubkey);
                             let node2_pubkey = PublicKey::from_str(&channel_edge.node2_pub)
@@ -933,11 +946,12 @@ impl LightningClient for LndNode {
                                 });
 
                             (node1_policy, node2_policy)
-                        } else {
-                            (None, None)
                         }
+                        Err(_) => (None, None),
                     }
-                    Err(_) => (None, None),
+                } else {
+                    // Private channels won't be in the graph
+                    (None, None)
                 };
 
                 Ok(ChannelDetails {
