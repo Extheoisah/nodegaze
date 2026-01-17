@@ -82,7 +82,7 @@ pub struct LndNode {
 }
 
 /// Parses the node features from the format returned by LND gRPC to LDK NodeFeatures
-fn parse_node_features(features: HashSet<u32>) -> NodeFeatures {
+pub fn parse_node_features(features: HashSet<u32>) -> NodeFeatures {
     let mut flags = vec![0; 256];
 
     for f in features.into_iter() {
