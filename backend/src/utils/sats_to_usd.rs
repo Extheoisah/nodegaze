@@ -43,7 +43,7 @@ impl PriceConverter {
         Self::round_to_2_decimals(btc_amount * btc_price)
     }
 
-    fn round_to_2_decimals(value: f64) -> f64 {
+    pub fn round_to_2_decimals(value: f64) -> f64 {
         (value * 100.0).round() / 100.0
     }
 
@@ -71,7 +71,7 @@ impl PriceConverter {
         }
     }
 
-    async fn check_cache(&self) -> Option<f64> {
+    pub async fn check_cache(&self) -> Option<f64> {
         let cache = self.cache.read().await;
         cache.as_ref().and_then(|c| {
             c.last_updated
@@ -99,7 +99,7 @@ impl PriceConverter {
         Ok(price_data.usd)
     }
 
-    async fn update_cache(&self, price: f64) {
+    pub async fn update_cache(&self, price: f64) {
         let mut cache = self.cache.write().await;
         *cache = Some(PriceCache {
             price,
